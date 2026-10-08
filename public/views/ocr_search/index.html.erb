@@ -1,0 +1,29 @@
+<div class="ocr-search">
+  <p class="ocr-kicker">Smith College Special Collections · Local pilot</p>
+  <h1>Search digitized newspapers</h1>
+  <p class="ocr-intro">Find words and phrases inside the scanned pages, then open the matching page.</p>
+  <form method="get" action="<%= app_prefix('/digital-text') %>" class="ocr-form">
+    <div class="ocr-query"><label for="ocr-q">Words or phrase</label><input id="ocr-q" name="q" type="search" value="<%= @query %>" maxlength="200" placeholder="Try mascot or &quot;Eleanor Kearns&quot;" class="form-control" required aria-describedby="ocr-help"></div>
+    <div><label for="ocr-item">Search within</label><select id="ocr-item" name="item" class="form-control"><option value="">All pilot issues</option><% @catalog.each do |id,item| %><option value="<%= id %>" <%= 'selected' if @item_id == id %>><%= item['title'] %></option><% end %></select></div>
+    <button class="btn btn-primary" type="submit">Search text</button>
+  </form>
+  <p id="ocr-help" class="ocr-muted">Use quotation marks for an exact phrase. Historical OCR can miss words or misread letters.</p>
+  <% if @error %><div role="alert" class="alert alert-warning"><%= @error %></div><% end %>
+  <% if @results %>
+    <h2><%= @total %> matching <%= @total == 1 ? 'page' : 'pages' %></h2>
+    <% if @results.empty? %><p>No pages found. Try a shorter phrase or another spelling.</p><% end %>
+    <% if @partial %><p role="status">Some results could not be retrieved. Please try again.</p><% end %>
+    <% @results.each do |result| %>
+      <% begin; page = OcrPilot::Catalog.page(result['item_id'], result['canvas_id']); rescue KeyError; page = nil; end %>
+      <article class="ocr-result">
+        <div><p class="ocr-kicker">Page <%= result['page_number'] %></p><h3><%= result['title'] %></h3>
+        <% Array(result['snippets']).each do |snippet| %><p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p><% end %>
+        <% if page %><%= link_to 'View page', app_prefix('/digital-text/items/' + result['item_id']) + '?' + {canvas: result['canvas_id'], q: @query}.to_query, class: 'ocr-view-link' %><% else %><p>That page reference is no longer available.</p><% end %></div>
+      </article>
+    <% end %>
+    <nav aria-label="Search result pages">
+      <% if @page_number.to_i > 1 %><%= link_to 'Previous results', app_prefix('/digital-text') + '?' + {q: @query, item: @item_id, page: @page_number.to_i - 1}.to_query %><% end %>
+      <% if @page_number.to_i * 25 < @total %><%= link_to 'Next results', app_prefix('/digital-text') + '?' + {q: @query, item: @item_id, page: @page_number.to_i + 1}.to_query %><% end %>
+    </nav>
+  <% else %><% unless @error %><div class="ocr-about"><h2>Explore <%= @catalog.length %> newspaper issues</h2><p>This pilot includes <%= @catalog.values.sum { |item| item['pages'].length } %> selected pages from the Smith College Weekly and the Sophian. Some issues are represented by a partial sample.</p><p>Text search is separate from the catalog search in the navigation above.</p></div><% end %><% end %>
+</div>

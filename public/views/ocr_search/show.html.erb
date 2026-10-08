@@ -1,0 +1,26 @@
+<div class="ocr-search"<% if @page && @query.present? %> data-ocr-highlights="<%= @highlight_data.to_json %>"<% end %>>
+  <%= link_to '← Back to text search', app_prefix('/digital-text') + '?' + {q: @query}.to_query %>
+  <% if @page %>
+    <p class="ocr-kicker mt-4">Digitized newspaper · Page <%= @page['number'] %> of <%= @item.fetch('source_page_count', @item['pages'].length) %></p>
+    <h1><%= @item['title'] %></h1>
+    <p><%= link_to 'View collection record', @item['record'] %> · <%= link_to 'Search within this issue', app_prefix('/digital-text') + '?' + {item: @item_id, q: @query}.to_query %></p>
+    <% if @item['pages'].length < @item.fetch('source_page_count', @item['pages'].length) %>
+      <p class="ocr-muted">This pilot includes <%= @item['pages'].length %> of this issue's <%= @item['source_page_count'] %> pages. Only the included pages are searchable here.</p>
+    <% end %>
+    <nav aria-label="Newspaper pages" class="ocr-pages">
+      <% @item['pages'].each do |page| %><%= link_to page['number'], app_prefix('/digital-text/items/' + @item_id) + '?' + {canvas: page['canvas'], q: @query}.to_query, 'aria-current': page == @page ? 'page' : nil %><% end %>
+    </nav>
+    <% if @query.present? %>
+      <div class="ocr-match-controls" hidden>
+        <span role="status" aria-live="polite"></span>
+        <button type="button" data-ocr-previous hidden>Previous match</button>
+        <button type="button" data-ocr-next hidden>Next match</button>
+        <button type="button" data-ocr-fit hidden>Show whole page</button>
+      </div>
+    <% end %>
+    <div data-dv-source-group="ocr-page" data-file-uri="<%= request.base_url + app_prefix("/digital-text/manifests/#{@item_id}/#{@page['number']}.json") %>">
+      <p><%= link_to "Open page #{@page['number']} image", @page['service'] + '/full/1200,/0/default.jpg' %></p>
+      <noscript><p>Turn on JavaScript to use the zoomable viewer. You can still open the page image and search the text.</p></noscript>
+    </div>
+  <% else %><h1>Page unavailable</h1><p>This page reference is missing or no longer matches the issue. Return to text search to find it again.</p><% end %>
+</div>

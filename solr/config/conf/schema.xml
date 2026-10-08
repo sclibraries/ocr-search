@@ -1,0 +1,31 @@
+<schema name="ocr-pilot" version="1.6">
+  <uniqueKey>id</uniqueKey>
+  <fieldType name="string" class="solr.StrField"/>
+  <fieldType name="integer" class="solr.IntPointField" docValues="true"/>
+  <fieldType name="long" class="solr.LongPointField" docValues="true"/>
+  <fieldType name="text_ocr" class="solr.TextField" storeOffsetsWithPositions="true">
+    <analyzer type="index">
+      <charFilter class="solrocr.OcrCharFilterFactory"/>
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+  </fieldType>
+  <field name="id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="_version_" type="long" indexed="false" stored="false"/>
+  <field name="corpus_id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="access" type="string" indexed="true" stored="true" required="true"/>
+  <field name="item_id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="collection_id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="title" type="string" indexed="false" stored="true"/>
+  <field name="page_label" type="string" indexed="false" stored="true"/>
+  <field name="page_number" type="integer" indexed="true" stored="true"/>
+  <field name="canvas_id" type="string" indexed="true" stored="true"/>
+  <field name="source_manifest_url" type="string" indexed="false" stored="true"/>
+  <field name="aspace_record" type="string" indexed="false" stored="true"/>
+  <field name="source_sha256" type="string" indexed="false" stored="true"/>
+  <field name="ocr" type="text_ocr" indexed="true" stored="true"/>
+</schema>

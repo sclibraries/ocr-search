@@ -1,0 +1,17 @@
+<config>
+  <luceneMatchVersion>9.12.0</luceneMatchVersion>
+  <lib dir="/opt/solr/contrib/ocr/lib" regex=".*\.jar"/>
+  <dataDir>${solr.data.dir:}</dataDir>
+  <directoryFactory name="DirectoryFactory" class="solr.NRTCachingDirectoryFactory"/>
+  <schemaFactory class="ClassicIndexSchemaFactory"/>
+  <updateHandler class="solr.DirectUpdateHandler2"/>
+  <searchComponent name="ocrHighlight" class="solrocr.OcrHighlightComponent"/>
+  <requestHandler name="/select" class="solr.SearchHandler">
+    <lst name="defaults"><str name="df">ocr</str><int name="rows">10</int></lst>
+    <arr name="components"><str>query</str><str>ocrHighlight</str><str>highlight</str></arr>
+  </requestHandler>
+  <requestHandler name="/update" class="solr.UpdateRequestHandler"/>
+  <requestHandler name="/admin/ping" class="solr.PingRequestHandler">
+    <lst name="invariants"><str name="q">*:*</str><str name="qt">/select</str></lst>
+  </requestHandler>
+</config>

@@ -1,0 +1,22 @@
+{
+  "sequences": [
+    {
+      "canvases": [
+        {
+          "@id": "https://compass.fivecolleges.edu/node/900101/canvas/1",
+          "label": "Copper Kite Gazette, Page 1",
+          "width": 600,
+          "height": 800,
+          "seeAlso": {"@id": "https://compass.fivecolleges.edu/system/files/demo-a-01.html"}
+        },
+        {
+          "@id": "https://compass.fivecolleges.edu/node/900101/canvas/2",
+          "label": "Copper Kite Gazette, Page 2",
+          "width": 600,
+          "height": 800,
+          "seeAlso": {"@id": "https://compass.fivecolleges.edu/system/files/demo-a-02.html"}
+        }
+      ]
+    }
+  ]
+}

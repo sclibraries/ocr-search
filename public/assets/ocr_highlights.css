@@ -1,0 +1,5 @@
+
+.ocr-match-controls { margin: 1rem 0; }
+.ocr-match-controls button { margin: .25rem; padding: .4rem .7rem; }
+.ocr-word-highlight { background: rgba(255, 220, 0, .32); border: 2px solid #bf6900; box-sizing: border-box; pointer-events: none; }
+.ocr-word-current { border-color: #b51f16; background: rgba(255, 220, 0, .45); }

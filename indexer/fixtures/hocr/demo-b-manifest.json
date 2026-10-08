@@ -1,0 +1,22 @@
+{
+  "sequences": [
+    {
+      "canvases": [
+        {
+          "@id": "https://compass.fivecolleges.edu/node/900102/canvas/1",
+          "label": "Midnight Owl Reader, Page 1",
+          "width": 600,
+          "height": 800,
+          "seeAlso": {"@id": "https://compass.fivecolleges.edu/system/files/demo-b-01.html"}
+        },
+        {
+          "@id": "https://compass.fivecolleges.edu/node/900102/canvas/2",
+          "label": "Midnight Owl Reader, Page 2",
+          "width": 600,
+          "height": 800,
+          "seeAlso": {"@id": "https://compass.fivecolleges.edu/system/files/demo-b-02.html"}
+        }
+      ]
+    }
+  ]
+}

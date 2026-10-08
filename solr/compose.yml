@@ -1,0 +1,14 @@
+name: ocr-search
+services:
+  solr:
+    build: .
+    ports:
+      - "127.0.0.1:18983:8983"
+    environment:
+      SOLR_HEAP: 512m
+      SOLR_OPTS: -Dsolr.config.lib.enabled=true
+    command: solr-precreate ocr /opt/ocr-config
+    volumes:
+      - ocr_data:/var/solr
+volumes:
+  ocr_data:

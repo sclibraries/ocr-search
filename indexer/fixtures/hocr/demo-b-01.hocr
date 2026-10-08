@@ -1,0 +1,15 @@
+<html>
+  <body>
+    <div class="ocr_page" id="page-b-1" title="bbox 0 0 600 800">
+      <span class="ocr_line" id="line-b-1" title="bbox 15 60 420 85">
+        <span class="ocrx_word" id="word-b-1-1" title="bbox 15 60 45 80; x_wconf 100">The</span>
+        <span class="ocrx_word" id="word-b-1-2" title="bbox 50 60 120 80; x_wconf 100">midnight</span>
+        <span class="ocrx_word" id="word-b-1-3" title="bbox 125 60 155 80; x_wconf 100">owl</span>
+        <span class="ocrx_word" id="word-b-1-4" title="bbox 160 60 195 80; x_wconf 100">reads</span>
+        <span class="ocrx_word" id="word-b-1-5" title="bbox 200 60 235 80; x_wconf 100">under</span>
+        <span class="ocrx_word" id="word-b-1-6" title="bbox 240 60 295 80; x_wconf 100">blue</span>
+        <span class="ocrx_word" id="word-b-1-7" title="bbox 300 60 380 80; x_wconf 100">lanterns.</span>
+      </span>
+    </div>
+  </body>
+</html>

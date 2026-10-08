@@ -1,0 +1,15 @@
+<html>
+  <body>
+    <div class="ocr_page" id="page-b-2" title="bbox 0 0 600 800">
+      <span class="ocr_line" id="line-b-2" title="bbox 25 140 450 165">
+        <span class="ocrx_word" id="word-b-2-1" title="bbox 25 140 75 160; x_wconf 100">Every</span>
+        <span class="ocrx_word" id="word-b-2-2" title="bbox 80 140 140 160; x_wconf 100">curious</span>
+        <span class="ocrx_word" id="word-b-2-3" title="bbox 145 140 205 160; x_wconf 100">reader</span>
+        <span class="ocrx_word" id="word-b-2-4" title="bbox 210 140 250 160; x_wconf 100">finds</span>
+        <span class="ocrx_word" id="word-b-2-5" title="bbox 255 140 265 160; x_wconf 100">a</span>
+        <span class="ocrx_word" id="word-b-2-6" title="bbox 270 140 310 160; x_wconf 100">new</span>
+        <span class="ocrx_word" id="word-b-2-7" title="bbox 315 140 370 160; x_wconf 100">story.</span>
+      </span>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+<html>
+  <body>
+    <div class="ocr_page" id="page-a-2" title="bbox 0 0 600 800">
+      <span class="ocr_line" id="line-a-2" title="bbox 20 100 500 135">
+        <span class="ocrx_word" id="word-a-2-1" title="bbox 20 100 35 130; x_wconf 100">A</span>
+        <span class="ocrx_word" id="word-a-2-2" title="bbox 110 100 180 130; x_wconf 100">silver</span>
+        <span class="ocrx_word" id="word-a-2-3" title="bbox 185 100 240 130; x_wconf 100">falcon</span>
+        <span class="ocrx_word" id="word-a-2-4" title="bbox 245 100 300 130; x_wconf 100">mascot</span>
+        <span class="ocrx_word" id="word-a-2-5" title="bbox 305 100 355 130; x_wconf 100">watches</span>
+        <span class="ocrx_word" id="word-a-2-6" title="bbox 360 100 385 130; x_wconf 100">over</span>
+        <span class="ocrx_word" id="word-a-2-7" title="bbox 390 100 425 130; x_wconf 100">the</span>
+        <span class="ocrx_word" id="word-a-2-8" title="bbox 430 100 490 130; x_wconf 100">library.</span>
+      </span>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,100 @@
+{
+  "items": [
+    {
+      "id": "demo-a",
+      "title": "The Copper Kite Gazette, Sample Issue",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1001",
+      "manifest_url": "https://compass.fivecolleges.edu/node/900101/manifest",
+      "manifest_sha256": "fea4f33764b471d17be278d0c68a796a360438562d72124de1904c7565457726",
+      "aspace_collection": "https://findingaids.smith.edu/repositories/99/resources/5001"
+    },
+    {
+      "id": "demo-b",
+      "title": "The Midnight Owl Reader, Sample Issue",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1002",
+      "manifest_url": "https://compass.fivecolleges.edu/node/900102/manifest",
+      "manifest_sha256": "8961f1c47f79e052192c74c3e01aa774dbf882e6c16e1d53f0a8f582d98f2df1",
+      "aspace_collection": "https://findingaids.smith.edu/repositories/99/resources/5002"
+    }
+  ],
+  "pages": [
+    {
+      "item": "demo-a",
+      "page": 1,
+      "canvas": "https://compass.fivecolleges.edu/node/900101/canvas/1",
+      "label": "Copper Kite Gazette, Page 1",
+      "hocr_url": "https://compass.fivecolleges.edu/system/files/demo-a-01.html",
+      "sha256": "9d873a7dfbbdc5ca45e1e1c00ffc2a52e993f91dbeb4c7e1149a41c4af2c0dc3",
+      "local_file": "demo-a-01.hocr",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1001"
+    },
+    {
+      "item": "demo-a",
+      "page": 2,
+      "canvas": "https://compass.fivecolleges.edu/node/900101/canvas/2",
+      "label": "Copper Kite Gazette, Page 2",
+      "hocr_url": "https://compass.fivecolleges.edu/system/files/demo-a-02.html",
+      "sha256": "42b2776d029bb1dfb7fdf47a0e8110ed2703d40ace76a1e561af97a38f13a4f9",
+      "local_file": "demo-a-02.hocr",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1001"
+    },
+    {
+      "item": "demo-b",
+      "page": 1,
+      "canvas": "https://compass.fivecolleges.edu/node/900102/canvas/1",
+      "label": "Midnight Owl Reader, Page 1",
+      "hocr_url": "https://compass.fivecolleges.edu/system/files/demo-b-01.html",
+      "sha256": "27e7c4340c6cc339e52d0be64fedcfbb2ebace7fbc68dcf7734b75057d5336d7",
+      "local_file": "demo-b-01.hocr",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1002"
+    },
+    {
+      "item": "demo-b",
+      "page": 2,
+      "canvas": "https://compass.fivecolleges.edu/node/900102/canvas/2",
+      "label": "Midnight Owl Reader, Page 2",
+      "hocr_url": "https://compass.fivecolleges.edu/system/files/demo-b-02.html",
+      "sha256": "acdcdf89d1e3ac04a23da5725be257fec45d3e760e75e5965e40ffdd6b5a3c1c",
+      "local_file": "demo-b-02.hocr",
+      "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1002"
+    }
+  ],
+  "reference_queries": [
+    {
+      "item": "demo-a",
+      "query": "copper kite",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "item": "demo-a",
+      "query": "silver",
+      "pages": [
+        1,
+        2
+      ]
+    },
+    {
+      "item": "demo-a",
+      "query": "silver falcon",
+      "pages": [
+        2
+      ]
+    },
+    {
+      "item": "demo-b",
+      "query": "midnight owl",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "item": "demo-b",
+      "query": "curious reader",
+      "pages": [
+        2
+      ]
+    }
+  ]
+}
