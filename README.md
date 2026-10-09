@@ -17,6 +17,34 @@ other top-level directories.
 - `solr/`: a standalone Solr service definition and OCR schema/configuration.
 - `docs/`: local Solr and discovery runbooks.
 
+## Relationship export and page inventory
+
+`python3 -m discovery export-sql` prints a bounded, read-only SQL query; it does not
+connect to a database. Pass `--collection-id` and `--hocr-media-use-id` explicitly.
+The query emits JSONL rows with schema version 1 and limits each batch to 100
+file/page/item associations. To resume after a full batch, use the last row's
+`file_id`, `page_id` and `item_id` with `--after-file-id`, `--after-page-id` and
+`--after-item-id`; all three fields make the cursor stable when one file has several
+page associations.
+
+`python3 -m discovery inventory` joins that JSONL export with a supplied evidence
+file and local converted IIIF manifests. It verifies manifest canvas order and IDs,
+copies the evidence SHA-256 values, and uses S3 `HeadObject` to record object size
+and version. An ancestry walk is capped at 32 levels; the report flags items that
+reach that cap. Access is `public` only when publication state is published and
+every recorded access term is explicitly `public`; restricted or unclear values
+stay `restricted` or `unknown`. The command writes a page-inventory JSONL file and a
+reconciliation JSON sidecar to `--output-location` (or `OCR_INVENTORY_OUTPUT`),
+which may be a local path or an explicitly supplied `s3://bucket/key` URI. Set
+`--source-bucket` or `OCR_SOURCE_BUCKET` for exports that contain keys without a
+bucket. The tool has no default bucket or output destination. S3 output is an
+explicit write to the operator-supplied location; tests use an in-memory fake and
+make no network requests.
+
+The export input, evidence, manifests and generated inventory may contain internal
+metadata. Keep operator data in an approved private location outside this public
+repository; use the committed synthetic fixtures for local tests.
+
 ## ArchivesSpace setup
 
 Install this checkout in the ArchivesSpace plugin directory under the name
@@ -102,6 +130,7 @@ ruby test/search_client_test.rb
 node --test test/highlights.test.cjs
 python3 -m unittest discover -s indexer -p 'test_index.py'
 python3 -m unittest discovery.test_discovery
+python3 -m unittest discover -s discovery -p 'test_inventory.py'
 ```
 
 `indexer/test_index.py` uses the synthetic fixtures by default. To run it against a

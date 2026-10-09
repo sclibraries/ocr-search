@@ -165,34 +165,116 @@ class DiscoveryTests(unittest.TestCase):
 
 
 class ExportTests(unittest.TestCase):
-    def test_collection_query_excludes_other_campus_and_paginates(self):
+    def test_export_query_names_the_versioned_inventory_fields(self):
+        from discovery.export import sample_sql
+
+        query = sample_sql(collection_id=9001, hocr_media_use_id=777)
+        for field in ('schema_version', 'exported_at', 'collection_id', 'page_order', 'canvas_id', 's3_key', 'recorded_bytes',
+                      'media_use', 'campus_ids', 'collection_ancestry', 'aspace_record',
+                      'ancestry_depth_limit_reached', 'publication_state', 'access_terms'):
+            with self.subTest(field=field):
+                self.assertIn(field, query)
+
+    def test_collection_query_keeps_campus_anomalies_and_paginates(self):
         import sqlite3
         from discovery.export import sample_sql
         db = sqlite3.connect(':memory:')
         self.addCleanup(db.close)
         db.create_function('UTC_TIMESTAMP', 0, lambda: '2026-09-22 00:00:00')
         db.create_function('CONCAT_WS', -1, lambda separator, *values: separator.join(str(v) for v in values if v is not None))
+        db.create_function('CONCAT', -1, lambda *values: ''.join(str(value) for value in values))
+        db.create_function('LOCATE', 2, lambda needle, haystack: haystack.find(needle) + 1)
         definitions = {
             'file_managed': 'fid INTEGER, filename TEXT, uri TEXT, filemime TEXT, filesize INTEGER',
             'node__field_member_of': 'entity_id INTEGER, deleted INTEGER, field_member_of_target_id INTEGER',
             'node__field_campus': 'entity_id INTEGER, deleted INTEGER, field_campus_target_id INTEGER',
+            'node__field_weight': 'entity_id INTEGER, deleted INTEGER, field_weight_value INTEGER',
+            'node_field_data': 'nid INTEGER, status INTEGER',
             'media__field_media_of': 'entity_id INTEGER, deleted INTEGER, field_media_of_target_id INTEGER',
             'media__field_media_use': 'entity_id INTEGER, deleted INTEGER, field_media_use_target_id INTEGER',
             'media__field_media_file': 'entity_id INTEGER, deleted INTEGER, field_media_file_target_id INTEGER',
             'media__field_access_terms': 'entity_id INTEGER, deleted INTEGER, field_access_terms_target_id INTEGER',
             'node__field_access_terms': 'entity_id INTEGER, deleted INTEGER, field_access_terms_target_id INTEGER',
+            'taxonomy_term_field_data': 'tid INTEGER, name TEXT',
         }
         for name, columns in definitions.items(): db.execute(f'CREATE TABLE {name} ({columns})')
         for fid, campus in [(1,169),(2,168),(3,169)]:
             db.execute('INSERT INTO file_managed VALUES (?, ?, ?, ?, ?)', (fid, f'{fid}.html', f'private://{fid}.html', 'text/html', 10))
-            db.executemany('INSERT INTO node__field_member_of VALUES (?, 0, ?)', [(100+fid,1335646),(200+fid,100+fid)])
+            if fid == 3:
+                db.executemany('INSERT INTO node__field_member_of VALUES (?, 0, ?)',
+                               [(100+fid,9001),(100+fid,980),(980,9001),(200+fid,100+fid)])
+            else:
+                db.executemany('INSERT INTO node__field_member_of VALUES (?, 0, ?)',
+                               [(100+fid,9001),(200+fid,100+fid)])
             db.execute('INSERT INTO node__field_campus VALUES (?,0,?)', (100+fid,campus))
+            db.execute('INSERT INTO node__field_weight VALUES (?,0,?)', (200+fid,fid))
+            db.executemany('INSERT INTO node_field_data VALUES (?,1)', [(100+fid,), (200+fid,)])
             db.execute('INSERT INTO media__field_media_of VALUES (?,0,?)', (300+fid,200+fid))
-            db.execute('INSERT INTO media__field_media_use VALUES (?,0,3507)', (300+fid,))
+            db.execute('INSERT INTO media__field_media_use VALUES (?,0,777)', (300+fid,))
             db.execute('INSERT INTO media__field_media_file VALUES (?,0,?)', (300+fid,fid))
-        sql = sample_sql(limit=1)
-        self.assertEqual(json.loads(db.execute(sql).fetchone()[0])['file_id'], 1)
-        row = json.loads(db.execute(sample_sql(after_file_id=1)).fetchone()[0])
-        self.assertEqual(row['file_id'], 3)
-        self.assertEqual(set(row['campus_ids'].split(',')) - {''}, {'169'})
-        with self.assertRaises(ValueError): sample_sql(limit=101)
+        sql = sample_sql(collection_id=9001, hocr_media_use_id=777, limit=1)
+        first = json.loads(db.execute(sql).fetchone()[0])
+        self.assertEqual(first['file_id'], 1)
+        self.assertEqual(first['schema_version'], 1)
+        self.assertEqual(first['page_order'], 1)
+        self.assertEqual(first['s3_key'], 's3fs-private/1.html')
+        row = json.loads(db.execute(sample_sql(collection_id=9001, hocr_media_use_id=777,
+                                               after_file_id=1)).fetchone()[0])
+        self.assertEqual(row['file_id'], 2)
+        self.assertEqual(set(row['campus_ids'].split(',')) - {''}, {'168'})
+        deep = json.loads(db.execute(sample_sql(collection_id=9001, hocr_media_use_id=777,
+                                                after_file_id=2)).fetchone()[0])
+        self.assertIn('9001>980>103>203', deep['collection_ancestry'])
+        with self.assertRaises(ValueError):
+            sample_sql(collection_id=9001, hocr_media_use_id=777, limit=101)
+
+    def test_cursor_resumes_after_every_row_when_a_file_has_multiple_page_associations(self):
+        import sqlite3
+        from discovery.export import sample_sql
+        db = sqlite3.connect(':memory:')
+        self.addCleanup(db.close)
+        db.create_function('UTC_TIMESTAMP', 0, lambda: '2026-09-22 00:00:00')
+        db.create_function('CONCAT_WS', -1, lambda separator, *values: separator.join(str(v) for v in values if v is not None))
+        db.create_function('CONCAT', -1, lambda *values: ''.join(str(value) for value in values))
+        db.create_function('LOCATE', 2, lambda needle, haystack: haystack.find(needle) + 1)
+        definitions = {
+            'file_managed': 'fid INTEGER, filename TEXT, uri TEXT, filemime TEXT, filesize INTEGER',
+            'node__field_member_of': 'entity_id INTEGER, deleted INTEGER, field_member_of_target_id INTEGER',
+            'node__field_weight': 'entity_id INTEGER, deleted INTEGER, field_weight_value INTEGER',
+            'node_field_data': 'nid INTEGER, status INTEGER',
+            'media__field_media_of': 'entity_id INTEGER, deleted INTEGER, field_media_of_target_id INTEGER',
+            'media__field_media_use': 'entity_id INTEGER, deleted INTEGER, field_media_use_target_id INTEGER',
+            'media__field_media_file': 'entity_id INTEGER, deleted INTEGER, field_media_file_target_id INTEGER',
+            'media__field_access_terms': 'entity_id INTEGER, deleted INTEGER, field_access_terms_target_id INTEGER',
+            'node__field_access_terms': 'entity_id INTEGER, deleted INTEGER, field_access_terms_target_id INTEGER',
+            'taxonomy_term_field_data': 'tid INTEGER, name TEXT',
+            'node__field_campus': 'entity_id INTEGER, deleted INTEGER, field_campus_target_id INTEGER',
+        }
+        for name, columns in definitions.items():
+            db.execute(f'CREATE TABLE {name} ({columns})')
+        db.execute("INSERT INTO file_managed VALUES (1,'shared.hocr','private://shared.hocr','text/html',20)")
+        db.executemany('INSERT INTO node__field_member_of VALUES (?,0,?)',
+                       [(100,9001),(101,9001),(200,100),(200,101),(201,100)])
+        db.executemany('INSERT INTO node__field_weight VALUES (?,0,?)', [(200,1),(201,2)])
+        db.executemany('INSERT INTO node_field_data VALUES (?,1)', [(100,),(101,),(200,),(201,)])
+        for media_id, page_id in [(300,200),(301,201)]:
+            db.execute('INSERT INTO media__field_media_of VALUES (?,0,?)', (media_id,page_id))
+            db.execute('INSERT INTO media__field_media_use VALUES (?,0,777)', (media_id,))
+            db.execute('INSERT INTO media__field_media_file VALUES (?,0,1)', (media_id,))
+
+        first = json.loads(db.execute(sample_sql(collection_id=9001, hocr_media_use_id=777,
+                                                 limit=1)).fetchone()[0])
+        second = json.loads(db.execute(sample_sql(collection_id=9001, hocr_media_use_id=777,
+                                                  after_file_id=first['file_id'],
+                                                  after_page_id=first['page_id'],
+                                                  after_item_id=first['item_id'],
+                                                  limit=1)).fetchone()[0])
+        third = json.loads(db.execute(sample_sql(collection_id=9001, hocr_media_use_id=777,
+                                                 after_file_id=second['file_id'],
+                                                 after_page_id=second['page_id'],
+                                                 after_item_id=second['item_id'],
+                                                 limit=1)).fetchone()[0])
+        self.assertEqual((first['file_id'], first['page_id']), (1, 200))
+        self.assertEqual((first['file_id'], first['page_id'], first['item_id']), (1, 200, 100))
+        self.assertEqual((second['file_id'], second['page_id'], second['item_id']), (1, 200, 101))
+        self.assertEqual((third['file_id'], third['page_id'], third['item_id']), (1, 201, 100))

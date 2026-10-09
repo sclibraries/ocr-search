@@ -7,7 +7,7 @@ here only.
 
 - The `ocr_search` ArchivesSpace PUI plugin (repository root: `plugin_init.rb`, `public/`, `lib/`).
 - `indexer/`: builds Solr page documents from hOCR plus an evidence file.
-- `discovery/`: read-only tooling that finds legacy hOCR and its page mappings.
+- `discovery/`: bounded relationship export and page-inventory tooling; S3 output requires an explicit destination.
 - `solr/`: Solr configuration and a Compose file for a local OCR core.
 
 ## Test
@@ -20,6 +20,7 @@ ruby test/search_client_test.rb
 node --test test/highlights.test.cjs
 python3 -m unittest discover -s indexer -p 'test_index.py'
 python3 -m unittest discovery.test_discovery
+python3 -m unittest discover -s discovery -p 'test_inventory.py'
 ```
 
 `indexer/test_http.py` and the browser test need a running search API, Solr and ArchivesSpace;
@@ -46,8 +47,9 @@ This repository is public and dedicated to the public domain under CC0 1.0.
 - **Never commit real OCR text or page images.** Fixtures are synthetic (`demo-a`, `demo-b`).
   Point tests at a local real corpus with `OCR_FIXTURE_DIR` and `OCR_EVIDENCE_FILE` instead.
 - No tickets, evidence logs, staff names, internal hostnames, server paths or credentials.
-- Discovery tooling stays read-only and must not print or run commands against production
-  systems.
+- Discovery SQL output is read-only and is never executed by the public tool. S3 reads use
+  `HeadObject`; inventory output can be written only to an explicitly supplied local path or
+  `s3://` URI. Never use production systems while developing or testing this repository.
 
 ## Working rules
 

@@ -8,7 +8,7 @@ contain item and file metadata; store each run in an appropriate local location.
 ## Requirements
 
 - Python 3.9 or newer
-- `boto3` only when using `--read-s3`
+- `boto3` only when using `--read-s3` or `discovery inventory`
 
 From the repository root, view the commands and run the tests:
 
@@ -24,12 +24,41 @@ collection identifier and cursor appropriate for the metadata source you have
 reviewed:
 
 ```sh
-python3 -m discovery export-sql --collection-id 12345 --after-file-id 0 --limit 100
+python3 -m discovery export-sql \
+  --collection-id 12345 --hocr-media-use-id 67890 --after-file-id 0 --limit 100
 ```
 
-Replace `12345` with the reviewed collection identifier. The limit is capped at 100
-rows. Review the query and its target schema before running it in another system.
-Its results are candidates for further inspection, not a public-index allowlist.
+Replace the example IDs with reviewed values. The limit is capped at 100 rows.
+Review the query and its target schema before running it in another system. Its
+results are candidates for further inspection, not a public-index allowlist.
+For later batches, resume from the last JSONL row using all three cursor fields:
+`--after-file-id`, `--after-page-id`, and `--after-item-id`.
+
+## Build a page inventory
+
+The inventory command joins versioned SQL-export rows with a supplied evidence file,
+local converted IIIF manifests, and read-only S3 `HeadObject` metadata. The source
+bucket and output location are explicit settings; no bucket is embedded in the
+tool. Use a local synthetic fixture for tests, and keep operator data outside this
+public repository:
+
+```sh
+python3 -m discovery inventory \
+  --export-jsonl ./relationships.jsonl \
+  --evidence-file ./evidence.json \
+  --manifest-dir ./manifests \
+  --source-bucket "$OCR_SOURCE_BUCKET" \
+  --output-location "$OCR_INVENTORY_OUTPUT"
+```
+
+`OCR_INVENTORY_OUTPUT` may be a private local path or an explicitly selected
+`s3://bucket/key` URI. S3 output is written only when that URI is supplied. The
+command writes a JSONL page inventory and a reconciliation JSON sidecar with counts
+per collection, deep and multiple-parent item IDs, unresolved ancestry, and sample
+canvas IDs. The SQL ancestry walk stops at 32 levels and records any row that reaches
+that limit; resolve those items before treating ancestry as complete. It does not
+treat an open-use term, publication state alone, or failed S3 metadata lookup as
+public-index approval.
 
 ## Inspect an inventory
 

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from .catalog import Catalog
 from .export import sample_sql
+from .inventory import build_inventory, read_export, write_inventory
 from .runner import audit
 from .sources import LocalSource, S3Source
 
@@ -34,12 +35,25 @@ def reports(catalog, output, run):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Read-only OCR discovery; default action imports metadata only.')
+    parser = argparse.ArgumentParser(
+        description='Bounded OCR discovery, relationship export, and page-inventory reconciliation.')
     commands = parser.add_subparsers(dest='command', required=True)
     sql = commands.add_parser('export-sql', help='Print a bounded SELECT; does not connect to a database')
-    sql.add_argument('--collection-id', type=int, default=1335646)
+    sql.add_argument('--collection-id', type=int, required=True)
+    sql.add_argument('--hocr-media-use-id', type=int, required=True)
     sql.add_argument('--after-file-id', type=int, default=0)
+    sql.add_argument('--after-page-id', type=int)
+    sql.add_argument('--after-item-id', type=int)
     sql.add_argument('--limit', type=int, default=100)
+    inventory = commands.add_parser('inventory', help='Join a SQL export to S3 metadata and IIIF manifests')
+    inventory.add_argument('--export-jsonl', required=True, type=Path)
+    inventory.add_argument('--evidence-file', required=True, type=Path)
+    inventory.add_argument('--manifest-dir', required=True, type=Path)
+    inventory.add_argument('--source-bucket', default=os.environ.get('OCR_SOURCE_BUCKET'))
+    inventory.add_argument('--output-location', default=os.environ.get('OCR_INVENTORY_OUTPUT'))
+    inventory.add_argument('--profile', help='Named AWS credential profile; never pass keys on the command line')
+    inventory.add_argument('--region', default=os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION'))
+    inventory.add_argument('--canvas-sample-size', type=int, default=10)
     run = commands.add_parser('inspect', help='Import a JSONL inventory and optionally inspect contents')
     run.add_argument('--inventory', required=True, type=Path)
     run.add_argument('--output', required=True, type=Path)
@@ -56,8 +70,35 @@ def main():
     run.add_argument('--delay', type=float, default=0.5)
     args = parser.parse_args()
     if args.command == 'export-sql':
-        query = sample_sql(args.collection_id, args.after_file_id, args.limit)
+        try:
+            query = sample_sql(args.collection_id, args.hocr_media_use_id,
+                               args.after_file_id, args.limit,
+                               args.after_page_id, args.after_item_id)
+        except ValueError as error:
+            parser.error(str(error))
         print(query)
+        return
+    if args.command == 'inventory':
+        if not args.source_bucket:
+            parser.error('set --source-bucket or OCR_SOURCE_BUCKET')
+        if not args.output_location:
+            parser.error('set --output-location or OCR_INVENTORY_OUTPUT')
+        try:
+            rows = read_export(args.export_jsonl)
+            evidence = json.loads(args.evidence_file.read_text())
+            import boto3
+            from botocore.config import Config
+            session = boto3.Session(profile_name=args.profile, region_name=args.region)
+            config = Config(connect_timeout=5, read_timeout=5,
+                            retries={'total_max_attempts': 1})
+            s3 = session.client('s3', config=config)
+            result = build_inventory(rows, evidence, args.manifest_dir, s3,
+                                     source_bucket=args.source_bucket,
+                                     sample_size=args.canvas_sample_size)
+            locations = write_inventory(result, args.output_location, s3)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            parser.error(str(error))
+        print(json.dumps({'written': locations, 'reconciliation': result['reconciliation']}, indent=2))
         return
     if not 1 <= args.max_files <= 100:
         parser.error('initial discovery sample is limited to 1–100 files')
