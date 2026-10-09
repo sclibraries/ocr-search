@@ -50,6 +50,24 @@ class SchemaV2Tests(unittest.TestCase):
         self.assertIsNotNone(components)
         self.assertIn('facet', [component.text for component in components.findall('str')])
 
+    def test_ocr_analyzers_apply_kstem_after_lowercasing(self):
+        field_type = self.root.find("./fieldType[@name='text_ocr']")
+
+        self.assertIsNotNone(field_type)
+        for analyzer in field_type.findall('analyzer'):
+            filters = [node.get('class') for node in analyzer.findall('filter')]
+            with self.subTest(analyzer=analyzer.get('type')):
+                self.assertEqual([
+                    'solr.LowerCaseFilterFactory',
+                    'solr.KStemFilterFactory'
+                ], filters)
+
+    def test_string_field_type_sorts_missing_values_last(self):
+        string_type = self.root.find("./fieldType[@name='string']")
+
+        self.assertIsNotNone(string_type)
+        self.assertEqual('true', string_type.get('sortMissingLast'))
+
 
 if __name__ == '__main__':
     unittest.main()

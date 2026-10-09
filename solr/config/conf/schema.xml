@@ -1,6 +1,6 @@
 <schema name="ocr-search" version="2.0">
   <uniqueKey>id</uniqueKey>
-  <fieldType name="string" class="solr.StrField"/>
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
   <fieldType name="integer" class="solr.IntPointField" docValues="true"/>
   <fieldType name="long" class="solr.LongPointField" docValues="true"/>
   <fieldType name="text_ocr" class="solr.TextField" storeOffsetsWithPositions="true">
@@ -8,10 +8,12 @@
       <charFilter class="solrocr.OcrCharFilterFactory"/>
       <tokenizer class="solr.StandardTokenizerFactory"/>
       <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.KStemFilterFactory"/>
     </analyzer>
     <analyzer type="query">
       <tokenizer class="solr.StandardTokenizerFactory"/>
       <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.KStemFilterFactory"/>
     </analyzer>
   </fieldType>
   <field name="id" type="string" indexed="true" stored="true" required="true"/>

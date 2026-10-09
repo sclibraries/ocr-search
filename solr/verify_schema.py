@@ -102,6 +102,10 @@ def verify(base_url):
         make_page('demo-b-1-' + token, corpus, 'demo-b-issue', 1,
                   'Demo B Publication', 1928, hocr),
     ])
+    stem_id = 'stem-' + token
+    documents.append(make_page(stem_id, comparison_corpus, 'demo-stem-item', 1,
+                               'Synthetic Stem Publication', 1932,
+                               hocr.replace('copper', 'vote', 1)))
     document_ids.extend(doc['id'] for doc in documents[1:])
 
     hocr_bytes = 0
@@ -155,6 +159,15 @@ def verify(base_url):
 
     try:
         request(base_url, '/update', {'commit': 'true'}, documents)
+
+        stemmed = request(base_url, '/select', {
+            'q': 'ocr:voting',
+            'fq': [f'corpus_id:{comparison_corpus}', f'id:{stem_id}'],
+            'rows': '0',
+            'wt': 'json',
+        })['response']
+        if stemmed['numFound'] != 1:
+            raise AssertionError('query "voting" did not match the synthetic page containing "vote"')
 
         grouped = request(base_url, '/select', {
             'q': '*:*',
@@ -221,7 +234,7 @@ def verify(base_url):
                 'year_facets': faceted['year'], 'synthetic_hocr_field_bytes': hocr_bytes,
                 'synthetic_miniocr_field_bytes': miniocr_bytes,
                 'synthetic_field_size_reduction_percent': round(comparison_percent, 1),
-                'highlight_comparisons': len(comparison_pairs)}
+                'highlight_comparisons': len(comparison_pairs), 'stem_check': 'voting matches vote'}
     finally:
         request(base_url, '/update', {'commit': 'true'},
                 {'delete': [{'id': doc_id} for doc_id in document_ids]})

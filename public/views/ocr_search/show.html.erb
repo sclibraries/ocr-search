@@ -1,26 +1,75 @@
-<div class="ocr-search"<% if @page && @query.present? %> data-ocr-highlights="<%= @highlight_data.to_json %>"<% end %>>
-  <%= link_to '← Back to text search', app_prefix('/digital-text') + '?' + {q: @query}.to_query %>
-  <% if @page %>
-    <p class="ocr-kicker mt-4">Digitized newspaper · Page <%= @page['number'] %> of <%= @item.fetch('source_page_count', @item['pages'].length) %></p>
-    <h1><%= @item['title'] %></h1>
-    <p><%= link_to 'View collection record', @item['record'] %> · <%= link_to 'Search within this issue', app_prefix('/digital-text') + '?' + {item: @item_id, q: @query}.to_query %></p>
-    <% if @item['pages'].length < @item.fetch('source_page_count', @item['pages'].length) %>
-      <p class="ocr-muted">This pilot includes <%= @item['pages'].length %> of this issue's <%= @item['source_page_count'] %> pages. Only the included pages are searchable here.</p>
+<div class="ocr-search"<% if @catalog_page && !@query.empty? %> data-ocr-highlights="<%= h(@highlight_data.to_json) %>"<% end %>>
+  <%= link_to '← Back to text search', search_url('page' => nil) %>
+  <% if @error %><div role="alert" class="alert alert-warning"><%= h(@error) %></div><% end %>
+
+  <% if @item %>
+    <p class="ocr-kicker">
+      <%= h(@item['series']) %>
+      <% if @item['issue_date'] %><span aria-hidden="true"> · </span><%= h(@item['issue_date']) %><% end %>
+    </p>
+    <h1><%= h(@item['title']) %></h1>
+    <p class="ocr-item-actions">
+      <% if @item['aspace_record'] %><%= link_to 'View in the finding aid', @item['aspace_record'] %><% end %>
+      <%= link_to 'Search this item', search_url('item' => @item_id, 'per_page' => '25', 'page' => nil) %>
+    </p>
+    <% if @item['truncated'] %><p class="ocr-muted">This list shows the first 1,000 public pages in the item.</p><% end %>
+
+    <% if @selected_page %>
+      <section class="ocr-selected-page" aria-labelledby="ocr-selected-page-heading">
+        <h2 id="ocr-selected-page-heading"><%= h(@selected_page['page_label'] || "Page #{@selected_page['page_number']}") %></h2>
+        <% match = page_match(@selected_page['canvas_id']) %>
+        <% if match %>
+          <% Array(match['snippets']).first(5).each do |snippet| %>
+            <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+          <% end %>
+        <% elsif !@query.empty? %>
+          <p class="ocr-muted">No excerpt is available for this page in the current search.</p>
+        <% end %>
+
+        <% if @catalog_page %>
+          <% unless @query.empty? %>
+            <div class="ocr-match-controls" hidden>
+              <span role="status" aria-live="polite"></span>
+              <button type="button" data-ocr-previous hidden>Previous match</button>
+              <button type="button" data-ocr-next hidden>Next match</button>
+              <button type="button" data-ocr-fit hidden>Show whole page</button>
+            </div>
+          <% end %>
+          <div data-dv-source-group="ocr-page" data-file-uri="<%= h(request.base_url + app_prefix("/digital-text/manifests/#{@item_id}/#{@catalog_page['number']}.json")) %>">
+            <p><%= link_to "Open page #{@catalog_page['number']} image", @catalog_page['service'] + '/full/1200,/0/default.jpg' %></p>
+            <noscript><p>Turn on JavaScript to use the zoomable viewer. You can still open the page image and search the text.</p></noscript>
+          </div>
+        <% end %>
+      </section>
     <% end %>
-    <nav aria-label="Newspaper pages" class="ocr-pages">
-      <% @item['pages'].each do |page| %><%= link_to page['number'], app_prefix('/digital-text/items/' + @item_id) + '?' + {canvas: page['canvas'], q: @query}.to_query, 'aria-current': page == @page ? 'page' : nil %><% end %>
+
+    <nav aria-label="Pages in this item" class="ocr-pages">
+      <h2>Pages in this item</h2>
+      <ul>
+        <% @pages.each do |page| %>
+          <% current = @selected_page && @selected_page['canvas_id'] == page['canvas_id'] %>
+          <li><%= link_to page['page_label'] || "Page #{page['page_number']}", page_url(page), 'aria-current' => (current ? 'page' : nil) %></li>
+        <% end %>
+      </ul>
     </nav>
-    <% if @query.present? %>
-      <div class="ocr-match-controls" hidden>
-        <span role="status" aria-live="polite"></span>
-        <button type="button" data-ocr-previous hidden>Previous match</button>
-        <button type="button" data-ocr-next hidden>Next match</button>
-        <button type="button" data-ocr-fit hidden>Show whole page</button>
-      </div>
+
+    <% if !@selected_page && !@matching_pages.empty? %>
+      <section class="ocr-item-excerpts" aria-labelledby="ocr-item-excerpts-heading">
+        <h2 id="ocr-item-excerpts-heading">Matching page excerpts</h2>
+        <% @matching_pages.each do |page| %>
+          <article class="ocr-page-excerpt">
+            <h3><%= link_to "View #{page['page_label'] || "page #{page['page_number']}"}", page_url(page) %></h3>
+            <% Array(page['snippets']).first(5).each do |snippet| %>
+              <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+            <% end %>
+          </article>
+        <% end %>
+      </section>
+    <% elsif !@selected_page && !@query.empty? && @matching_pages.empty? %>
+      <p>No matching pages were found in this item.</p>
     <% end %>
-    <div data-dv-source-group="ocr-page" data-file-uri="<%= request.base_url + app_prefix("/digital-text/manifests/#{@item_id}/#{@page['number']}.json") %>">
-      <p><%= link_to "Open page #{@page['number']} image", @page['service'] + '/full/1200,/0/default.jpg' %></p>
-      <noscript><p>Turn on JavaScript to use the zoomable viewer. You can still open the page image and search the text.</p></noscript>
-    </div>
-  <% else %><h1>Page unavailable</h1><p>This page reference is missing or no longer matches the issue. Return to text search to find it again.</p><% end %>
+  <% else %>
+    <h1>Item unavailable</h1>
+    <% unless @error %><p>This item has no public pages or is no longer available.</p><% end %>
+  <% end %>
 </div>

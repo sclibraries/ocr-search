@@ -2,28 +2,138 @@
   <p class="ocr-kicker">Smith College Special Collections · Local pilot</p>
   <h1>Search digitized newspapers</h1>
   <p class="ocr-intro">Find words and phrases inside the scanned pages, then open the matching page.</p>
+
   <form method="get" action="<%= app_prefix('/digital-text') %>" class="ocr-form">
-    <div class="ocr-query"><label for="ocr-q">Words or phrase</label><input id="ocr-q" name="q" type="search" value="<%= @query %>" maxlength="200" placeholder="Try mascot or &quot;Eleanor Kearns&quot;" class="form-control" required aria-describedby="ocr-help"></div>
-    <div><label for="ocr-item">Search within</label><select id="ocr-item" name="item" class="form-control"><option value="">All pilot issues</option><% @catalog.each do |id,item| %><option value="<%= id %>" <%= 'selected' if @item_id == id %>><%= item['title'] %></option><% end %></select></div>
+    <div class="ocr-query">
+      <label for="ocr-q">Words or phrase</label>
+      <input id="ocr-q" name="q" type="search" value="<%= h(@query) %>" maxlength="200"
+        placeholder="Try mascot or &quot;two words&quot;" class="form-control" required aria-describedby="ocr-help">
+      <% @filters.each do |key, value| %><% unless value.nil? %><input type="hidden" name="<%= key %>" value="<%= h(value) %>"><% end %><% end %>
+      <input type="hidden" name="sort" value="<%= h(@sort) %>">
+      <% if @per_page.to_i != 10 %><input type="hidden" name="per_page" value="<%= @per_page %>"><% end %>
+    </div>
     <button class="btn btn-primary" type="submit">Search text</button>
   </form>
-  <p id="ocr-help" class="ocr-muted">Use quotation marks for an exact phrase. Historical OCR can miss words or misread letters.</p>
-  <% if @error %><div role="alert" class="alert alert-warning"><%= @error %></div><% end %>
+  <p id="ocr-help" class="ocr-muted">Use quotation marks for a phrase. Historical OCR can miss words or misread letters.</p>
+
+  <% if @error %><div role="alert" class="alert alert-warning"><%= h(@error) %></div><% end %>
+
   <% if @results %>
-    <h2><%= @total %> matching <%= @total == 1 ? 'page' : 'pages' %></h2>
-    <% if @results.empty? %><p>No pages found. Try a shorter phrase or another spelling.</p><% end %>
+    <p class="ocr-result-count">
+      <%= @total_items %> matching <%= @total_items == 1 ? 'item' : 'items' %>
+      <span aria-hidden="true">·</span>
+      <%= @matching_pages %> matching <%= @matching_pages == 1 ? 'page' : 'pages' %>
+    </p>
     <% if @partial %><p role="status">Some results could not be retrieved. Please try again.</p><% end %>
-    <% @results.each do |result| %>
-      <% begin; page = OcrPilot::Catalog.page(result['item_id'], result['canvas_id']); rescue KeyError; page = nil; end %>
-      <article class="ocr-result">
-        <div><p class="ocr-kicker">Page <%= result['page_number'] %></p><h3><%= result['title'] %></h3>
-        <% Array(result['snippets']).each do |snippet| %><p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p><% end %>
-        <% if page %><%= link_to 'View page', app_prefix('/digital-text/items/' + result['item_id']) + '?' + {canvas: result['canvas_id'], q: @query}.to_query, class: 'ocr-view-link' %><% else %><p>That page reference is no longer available.</p><% end %></div>
-      </article>
+
+    <div class="ocr-results-layout">
+      <aside class="ocr-filter-panel" aria-label="Search filters">
+        <h2>Filters</h2>
+        <nav aria-label="Filter by publication">
+          <h3>Publication</h3>
+          <ul class="ocr-filter-list">
+            <% Array(@facets['series']).each do |facet| %>
+              <% active = @filters['series'] == facet['value'].to_s %>
+              <% count = facet['count'].to_i %>
+              <li><%= link_to "#{facet['value']} (#{count} #{count == 1 ? 'item' : 'items'})", search_url('series' => facet['value'], 'page' => nil), 'aria-current' => (active ? 'true' : nil) %></li>
+            <% end %>
+          </ul>
+        </nav>
+
+        <nav aria-label="Filter by decade">
+          <h3>Date</h3>
+          <ul class="ocr-filter-list">
+            <% Array(@facets['decade']).each do |facet| %>
+              <% decade = facet['value'].to_i %>
+              <% count = facet['count'].to_i %>
+              <% active = @filters['year_from'].to_s.to_i == decade && @filters['year_to'].to_s.to_i == decade + 9 %>
+              <li><%= link_to "#{decade}s (#{count} #{count == 1 ? 'item' : 'items'})", search_url('year_from' => decade, 'year_to' => decade + 9, 'page' => nil), 'aria-current' => (active ? 'true' : nil) %></li>
+            <% end %>
+          </ul>
+        </nav>
+
+        <form method="get" action="<%= app_prefix('/digital-text') %>" class="ocr-year-form">
+          <fieldset>
+            <legend>Filter by year range</legend>
+            <input type="hidden" name="q" value="<%= h(@query) %>">
+            <% %w[series collection item].each do |key| %><% value = @filters[key] %><% unless value.nil? %><input type="hidden" name="<%= key %>" value="<%= h(value) %>"><% end %><% end %>
+            <input type="hidden" name="sort" value="<%= h(@sort) %>">
+            <% if @per_page.to_i != 10 %><input type="hidden" name="per_page" value="<%= @per_page %>"><% end %>
+            <label for="ocr-year-from">From</label>
+            <input id="ocr-year-from" type="number" name="year_from" min="1000" max="2100" value="<%= h(@filters['year_from']) %>">
+            <label for="ocr-year-to">To</label>
+            <input id="ocr-year-to" type="number" name="year_to" min="1000" max="2100" value="<%= h(@filters['year_to']) %>">
+            <button type="submit">Apply years</button>
+          </fieldset>
+        </form>
+
+        <nav aria-label="Sort results" class="ocr-sort">
+          <h3>Sort</h3>
+          <ul class="ocr-sort-list">
+            <% {'relevance' => 'Best match', 'date_asc' => 'Oldest first', 'date_desc' => 'Newest first'}.each do |value, label| %>
+              <li><%= link_to label, search_url('sort' => value, 'page' => nil), 'aria-current' => (@sort == value ? 'true' : nil) %></li>
+            <% end %>
+          </ul>
+        </nav>
+
+        <section class="ocr-active-filters" aria-labelledby="ocr-active-filters-heading">
+          <h3 id="ocr-active-filters-heading">Active filters</h3>
+          <ul class="ocr-chip-list">
+            <% if @filters['series'] %><li><%= link_to "Publication: #{@filters['series']} ×", search_url('series' => nil, 'page' => nil), 'aria-label' => "Remove Publication filter: #{@filters['series']}" %></li><% end %>
+            <% if @filters['year_from'] %><li><%= link_to "From: #{@filters['year_from']} ×", search_url('year_from' => nil, 'page' => nil), 'aria-label' => "Remove start year filter: #{@filters['year_from']}" %></li><% end %>
+            <% if @filters['year_to'] %><li><%= link_to "To: #{@filters['year_to']} ×", search_url('year_to' => nil, 'page' => nil), 'aria-label' => "Remove end year filter: #{@filters['year_to']}" %></li><% end %>
+            <% if @filters['collection'] %><li><%= link_to "Collection: #{@filters['collection']} ×", search_url('collection' => nil, 'page' => nil), 'aria-label' => "Remove collection filter: #{@filters['collection']}" %></li><% end %>
+            <% if @filters['item'] %>
+              <% item_result = Array(@results).find { |result| result['item_id'] == @filters['item'] } %>
+              <% item_label = item_result ? item_result['title'] : @filters['item'] %>
+              <li><%= link_to "Item: #{item_label} ×", search_url('item' => nil, 'page' => nil, 'per_page' => nil), 'aria-label' => "Remove item filter: #{item_label}" %></li>
+            <% end %>
+          </ul>
+          <%= link_to 'Clear all', search_url('series' => nil, 'year_from' => nil, 'year_to' => nil, 'collection' => nil, 'item' => nil, 'sort' => 'relevance', 'page' => nil, 'per_page' => nil), class: 'ocr-clear-filters' %>
+        </section>
+      </aside>
+
+      <main id="ocr-results" class="ocr-results" aria-label="Search results">
+        <h2 class="sr-only">Search results</h2>
+        <% if @results.empty? %>
+          <p>No pages found. Try a shorter phrase or another spelling.</p>
+        <% end %>
+        <% @results.each do |result| %>
+          <% pages = Array(result['pages']).first(3) %>
+          <article class="ocr-result">
+            <h3><%= link_to result['title'].to_s, item_page_url(result['item_id']) %></h3>
+            <p class="ocr-result-meta">
+              <% details = [result['series'], result['issue_date']].reject { |value| value.to_s.empty? } %>
+              <%= h(details.join(' · ')) %>
+              <% unless details.empty? %><span aria-hidden="true"> · </span><% end %>
+              <%= result['matching_pages'] %> matching <%= result['matching_pages'].to_i == 1 ? 'page' : 'pages' %>
+            </p>
+            <% pages.each do |page| %>
+              <section class="ocr-page-excerpt" aria-label="Matching page <%= h(page['page_number']) %>">
+                <h4><%= link_to "View #{page['page_label'] || "page #{page['page_number']}"}", item_page_url(result['item_id'], page['canvas_id']) %></h4>
+                <% Array(page['snippets']).first(2).each do |snippet| %>
+                  <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+                <% end %>
+              </section>
+            <% end %>
+            <p><%= link_to "See all #{result['matching_pages']} matching pages", search_url('item' => result['item_id'], 'per_page' => '25', 'page' => nil), class: 'ocr-view-link' %></p>
+          </article>
+        <% end %>
+
+        <% result_total = @filters['item'] ? @matching_pages : @total_items %>
+        <nav aria-label="Search result pages" class="ocr-pagination">
+          <% if @page_number.to_i > 1 %><%= link_to 'Previous results', search_url('page' => @page_number.to_i - 1) %><% end %>
+          <% if @page_number.to_i * @per_page < result_total.to_i %><%= link_to 'Next results', search_url('page' => @page_number.to_i + 1) %><% end %>
+        </nav>
+      </main>
+    </div>
+  <% else %>
+    <% unless @error %>
+      <div class="ocr-about">
+        <h2>Explore <%= @catalog.length %> newspaper issues</h2>
+        <p>This pilot includes selected pages from two sample publications. Some issues are represented by a partial sample.</p>
+        <p>Text search is separate from the catalog search in the navigation above.</p>
+      </div>
     <% end %>
-    <nav aria-label="Search result pages">
-      <% if @page_number.to_i > 1 %><%= link_to 'Previous results', app_prefix('/digital-text') + '?' + {q: @query, item: @item_id, page: @page_number.to_i - 1}.to_query %><% end %>
-      <% if @page_number.to_i * 25 < @total %><%= link_to 'Next results', app_prefix('/digital-text') + '?' + {q: @query, item: @item_id, page: @page_number.to_i + 1}.to_query %><% end %>
-    </nav>
-  <% else %><% unless @error %><div class="ocr-about"><h2>Explore <%= @catalog.length %> newspaper issues</h2><p>This pilot includes <%= @catalog.values.sum { |item| item['pages'].length } %> selected pages from the Smith College Weekly and the Sophian. Some issues are represented by a partial sample.</p><p>Text search is separate from the catalog search in the navigation above.</p></div><% end %><% end %>
+  <% end %>
 </div>
