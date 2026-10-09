@@ -3,6 +3,8 @@
     {
       "id": "demo-a",
       "title": "The Copper Kite Gazette, Sample Issue",
+      "series": "Copper Kite Gazette",
+      "issue_date": "1927-12-07",
       "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1001",
       "manifest_url": "https://compass.fivecolleges.edu/node/900101/manifest",
       "manifest_sha256": "fea4f33764b471d17be278d0c68a796a360438562d72124de1904c7565457726",
@@ -11,6 +13,8 @@
     {
       "id": "demo-b",
       "title": "The Midnight Owl Reader, Sample Issue",
+      "series": "Midnight Owl Reader",
+      "issue_date": "1928-01",
       "aspace_record": "https://findingaids.smith.edu/repositories/99/archival_objects/1002",
       "manifest_url": "https://compass.fivecolleges.edu/node/900102/manifest",
       "manifest_sha256": "8961f1c47f79e052192c74c3e01aa774dbf882e6c16e1d53f0a8f582d98f2df1",

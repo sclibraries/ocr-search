@@ -55,6 +55,61 @@ class IndexTests(unittest.TestCase):
         self.assertEqual(len(docs), len(expected_pages))
         self.assertEqual({d['item_id'] for d in docs}, {item_id})
 
+    def test_publication_and_issue_date_reach_solr_documents(self):
+        evidence = self.read_evidence()
+        item = evidence['items'][0]
+        item['series'] = 'Sample Publication'
+        item['issue_date'] = '1927-12-07'
+
+        docs = self.build(evidence)
+        item_docs = [doc for doc in docs if doc['item_id'] == item['id']]
+
+        self.assertTrue(item_docs)
+        for doc in item_docs:
+            self.assertEqual(doc['series'], 'Sample Publication')
+            self.assertEqual(doc['issue_date'], '1927-12-07')
+            self.assertEqual(doc['year'], 1927)
+
+    def test_synthetic_evidence_includes_item_publication_fields(self):
+        evidence = self.read_evidence()
+        items = {item['id']: item for item in evidence['items']}
+        if set(items) != {'demo-a', 'demo-b'}:
+            self.skipTest('uses the committed synthetic evidence fixture')
+
+        self.assertEqual(items['demo-a']['series'], 'Copper Kite Gazette')
+        self.assertEqual(items['demo-a']['issue_date'], '1927-12-07')
+        self.assertEqual(items['demo-b']['series'], 'Midnight Owl Reader')
+        self.assertEqual(items['demo-b']['issue_date'], '1928-01')
+
+    def test_partial_issue_dates_derive_year(self):
+        for issue_date in ('1927', '1927-12'):
+            with self.subTest(issue_date=issue_date):
+                evidence = self.read_evidence()
+                item = evidence['items'][0]
+                item['series'] = 'Sample Publication'
+                item['issue_date'] = issue_date
+
+                docs = self.build(evidence)
+                doc = next(doc for doc in docs if doc['item_id'] == item['id'])
+
+                self.assertEqual(doc['issue_date'], issue_date)
+                self.assertEqual(doc['year'], 1927)
+
+    def test_missing_publication_and_issue_date_fields_are_omitted(self):
+        evidence = self.read_evidence()
+        item = evidence['items'][0]
+        item.pop('series', None)
+        item.pop('issue_date', None)
+
+        docs = self.build(evidence)
+        item_docs = [doc for doc in docs if doc['item_id'] == item['id']]
+
+        self.assertTrue(item_docs)
+        for doc in item_docs:
+            self.assertNotIn('series', doc)
+            self.assertNotIn('issue_date', doc)
+            self.assertNotIn('year', doc)
+
     def test_modified_ocr_is_rejected(self):
         data = self.read_evidence()
         data['pages'][0]['sha256'] = '0' * 64

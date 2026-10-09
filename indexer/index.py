@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+from stream import _year
+
 
 def local_file(root, name):
     path = (root / name).resolve()
@@ -77,14 +79,25 @@ def build_documents(evidence, source, allowed, corpus):
             raise ValueError('duplicate page identifier')
         seen.add(page_id)
         data = checked_bytes(local_file(source, page['local_file']), page['sha256'])
-        documents.append({
+        document = {
             'id': page_id, 'corpus_id': corpus, 'access': 'public', 'item_id': item_id,
             'collection_id': urllib.parse.urlparse(item['aspace_collection']).path,
             'title': item['title'], 'page_number': number, 'page_label': page['label'],
             'canvas_id': page['canvas'], 'source_manifest_url': item['manifest_url'],
             'aspace_record': item['aspace_record'], 'source_sha256': page['sha256'],
             'ocr': validate_hocr(data, canvas),
-        })
+        }
+        series = item.get('series')
+        if series is not None and str(series).strip():
+            document['series'] = str(series).strip()
+        issue_date = item.get('issue_date')
+        if issue_date is not None and str(issue_date).strip():
+            issue_date = str(issue_date).strip()
+            document['issue_date'] = issue_date
+            year = _year(issue_date)
+            if year != '':
+                document['year'] = year
+        documents.append(document)
     if not documents or len(documents) > 10000:
         raise ValueError('pilot corpus must contain 1–10000 pages')
     for item_id in allowed:
