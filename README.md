@@ -10,9 +10,9 @@ other top-level directories.
 
 - `plugin_init.rb`, `lib/`, `public/`, and `test/`: the ArchivesSpace search and
   result views, search client, catalog, highlighting behavior, and tests.
-- `indexer/`: validates supplied hOCR and IIIF evidence and synchronizes one named
-  corpus to Solr. Its fixtures contain invented text for two sample items, not a
-  complete searchable collection.
+- `indexer/`: keeps the local pilot indexer and adds a resumable S3 streaming
+  indexer. Its fixtures contain invented text for two sample items, not a complete
+  searchable collection.
 - `discovery/`: bounded metadata import and OCR validation utilities.
 - `solr/`: a standalone Solr service definition and OCR schema/configuration.
 - `docs/`: local Solr and discovery runbooks.
@@ -52,6 +52,27 @@ make no network requests.
 The export input, evidence, manifests and generated inventory may contain internal
 metadata. Keep operator data in an approved private location outside this public
 repository; use the committed synthetic fixtures for local tests.
+
+## Streaming S3 indexing
+
+`python3 -m indexer.stream` reads a page inventory, gets each public hOCR object at
+its recorded S3 version, verifies its size, ETag and optional SHA-256, and sends
+version 2 page documents to one explicitly named Solr core in bounded batches. The
+SQLite journal stores page identities and checkpoint status, not OCR text. Use a
+new journal when the inventory or corpus changes. `--dry-run` verifies inventory
+and S3 objects without making Solr requests. Keep S3 credentials in the normal AWS
+credential chain; the command does not accept credentials as arguments.
+
+Example invocation (supply the private inventory, journal and core for the
+approved environment):
+
+```sh
+python3 -m indexer.stream \
+  --inventory /private/path/page-inventory.jsonl \
+  --journal /private/path/ocr-index.sqlite \
+  --corpus public-newspapers \
+  --solr-url http://127.0.0.1:8983/solr/ocr
+```
 
 ## ArchivesSpace setup
 
@@ -137,6 +158,7 @@ ruby test/catalog_test.rb
 ruby test/search_client_test.rb
 node --test test/highlights.test.cjs
 python3 -m unittest discover -s indexer -p 'test_index.py'
+python3 -m unittest discover -s indexer -p 'test_stream.py'
 python3 -m unittest discovery.test_discovery
 python3 -m unittest discover -s discovery -p 'test_inventory.py'
 python3 -m unittest discover -s discovery -p 'test_manifests.py'
@@ -145,6 +167,12 @@ python3 -m unittest discover -s discovery -p 'test_manifests.py'
 `indexer/test_index.py` uses the synthetic fixtures by default. To run it against a
 local corpus, set `OCR_FIXTURE_DIR` to the directory containing its hOCR files and
 IIIF manifests, and `OCR_EVIDENCE_FILE` to the matching evidence JSON file.
+
+`indexer/test_stream.py` is an integration acceptance test. It skips unless
+`OCR_010_TEST_S3_ENDPOINT` and `OCR_010_TEST_SOLR_URL` identify the dedicated
+loopback LocalStack endpoint on port 14567 and throwaway `ocr-010-test` Solr core
+on port 18984. It rejects other hosts, ports and core paths. The tests use only
+invented hOCR and metadata.
 
 `indexer/test_http.py` is an integration test for a live search API and Solr
 service. It is skipped unless both `OCR_SEARCH_BASE_URL` and an existing
