@@ -18,7 +18,7 @@ class FakeObjectStore:
         if kwargs['Key'] in self.head_errors:
             raise self.head_errors[kwargs['Key']]
         size = self.sizes[kwargs['Key']]
-        return {'ContentLength': size, 'VersionId': 'version-' + str(size)}
+        return {'ContentLength': size, 'VersionId': 'version-' + str(size), 'ETag': f'"etag-{size}"'}
 
     def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
@@ -95,6 +95,14 @@ class InventoryTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
         self.rows, self.evidence, self.manifests, self.object_store = synthetic_inputs(self.root)
+        self.access_mapping = {
+            'schema_version': 1,
+            'published_without_terms': 'restricted',
+            'terms': [
+                {'name': 'public', 'access': 'public'},
+                {'name': 'restricted', 'access': 'restricted'},
+            ],
+        }
 
     def inventory_api(self):
         spec = importlib.util.find_spec('discovery.inventory')
@@ -105,7 +113,7 @@ class InventoryTests(unittest.TestCase):
     def test_inventory_reconciles_synthetic_pages_and_fails_closed_on_access(self):
         build_inventory, _ = self.inventory_api()
         result = build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source')
+                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
 
         self.assertEqual(len(result['pages']), 30)
         expected = {(page['item'], page['page']): page for page in self.evidence['pages']}
@@ -118,6 +126,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(access[('demo-item-01', 1)], 'unknown')
         self.assertEqual(access[('demo-item-02', 1)], 'public')
         self.assertEqual(len(self.object_store.head_calls), 30)
+        self.assertEqual(result['pages'][0]['s3_etag'], '"etag-101"')
         self.assertEqual(result['reconciliation']['pages_by_collection'], {
             'collection-0': 10, 'collection-1': 10, 'collection-2': 12})
         self.assertIn('demo-item-00', result['reconciliation']['deep_items'])
@@ -125,9 +134,64 @@ class InventoryTests(unittest.TestCase):
         self.assertIn('demo-item-14', result['reconciliation']['ancestry_truncated_items'])
         self.assertEqual(len(result['reconciliation']['sample_canvas_ids']), 10)
 
-    def test_mixed_public_and_unclear_terms_remain_unknown(self):
-        from discovery.inventory import _access_class
-        self.assertEqual(_access_class('published', ['public', 'open-use'], {'public'}), 'unknown')
+    def test_access_mapping_controls_terms_and_published_pages_without_terms(self):
+        from discovery.inventory import classify_access
+        self.assertEqual(classify_access('published', ['public'], [], self.access_mapping), 'public')
+        self.assertEqual(classify_access('published', ['public', 'open-use'], [], self.access_mapping), 'unknown')
+        self.assertEqual(classify_access('published', ['restricted'], [], self.access_mapping), 'restricted')
+        self.assertEqual(classify_access('published', [], [], self.access_mapping), 'restricted')
+        self.assertEqual(classify_access('unpublished', ['public'], [], self.access_mapping), 'restricted')
+
+    def test_missing_evidence_checksum_stays_empty_and_head_metadata_is_kept(self):
+        build_inventory, _ = self.inventory_api()
+        evidence = json.loads(json.dumps(self.evidence))
+        del evidence['pages'][0]['sha256']
+        result = build_inventory([self.rows[0]], evidence, self.manifests, self.object_store,
+                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        page = result['pages'][0]
+        self.assertEqual(page['sha256'], '')
+        self.assertEqual(page['s3_etag'], '"etag-101"')
+        self.assertEqual(page['s3_version_id'], 'version-101')
+        self.assertEqual(page['s3_size'], 101)
+
+    def test_inventory_requires_a_reviewed_access_mapping(self):
+        build_inventory, _ = self.inventory_api()
+        with self.assertRaisesRegex(ValueError, 'access mapping'):
+            build_inventory(self.rows[:1], self.evidence, self.manifests, self.object_store,
+                             source_bucket='synthetic-source', access_mapping=None)
+
+    def test_compass_manifest_fills_canvas_when_evidence_and_converted_manifest_are_absent(self):
+        from discovery.manifests import fetch_manifests
+
+        rows = [dict(row, canvas_id=None, manifest_url=None) for row in self.rows[:2]]
+        item_id = rows[0]['item_id']
+        compass_manifest = {
+            '@id': f'https://compass.example.test/node/{item_id}/manifest',
+            'sequences': [{'canvases': [
+                {'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'},
+                {'@id': f'https://canvas.example.test/{item_id}/2', 'label': 'Page 2'},
+            ]}],
+        }
+        raw_manifest = json.dumps(compass_manifest).encode()
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_dir = Path(temporary) / 'compass'
+            fetch_manifests(rows, manifest_dir, 'https://compass.example.test',
+                            fetcher=lambda _: raw_manifest, sleep_fn=lambda _: None)
+            from discovery.inventory import build_inventory
+            result = build_inventory(rows, None, None, self.object_store,
+                                     source_bucket='synthetic-source',
+                                     compass_manifest_directory=manifest_dir,
+                                     access_mapping=self.access_mapping)
+
+        pages = result['pages']
+        self.assertEqual([page['canvas_id'] for page in pages], [
+            f'https://canvas.example.test/{item_id}/1',
+            f'https://canvas.example.test/{item_id}/2',
+        ])
+        self.assertEqual([page['sha256'] for page in pages], ['', ''])
+        self.assertEqual([page['access'] for page in pages], ['public', 'restricted'])
+        self.assertEqual(pages[0]['manifest_url'], compass_manifest['@id'])
+        self.assertEqual(pages[0]['s3_etag'], '"etag-101"')
 
     def test_inventory_reproduces_committed_synthetic_fixture_evidence(self):
         build_inventory, _ = self.inventory_api()
@@ -156,13 +220,13 @@ class InventoryTests(unittest.TestCase):
             })
         store = FakeObjectStore(sizes)
         result = build_inventory(rows, evidence, fixtures / 'hocr', store,
-                                 source_bucket='synthetic-source')
+                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
         actual = {(page['item_id'], page['page_number']): page for page in result['pages']}
         for source in evidence['pages']:
             page = actual[(source['item'], source['page'])]
             self.assertEqual(page['canvas_id'], source['canvas'])
             self.assertEqual(page['sha256'], source['sha256'])
-            self.assertEqual(page['access'], 'unknown')
+            self.assertEqual(page['access'], 'restricted')
 
     def test_manifest_canvas_mismatch_is_rejected(self):
         build_inventory, _ = self.inventory_api()
@@ -172,7 +236,7 @@ class InventoryTests(unittest.TestCase):
         manifest_path.write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, 'canvas'):
             build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                             source_bucket='synthetic-source')
+                             source_bucket='synthetic-source', access_mapping=self.access_mapping)
 
     def test_one_source_file_can_have_multiple_page_associations(self):
         build_inventory, _ = self.inventory_api()
@@ -182,7 +246,8 @@ class InventoryTests(unittest.TestCase):
         second['s3_key'] = first['s3_key']
         second['recorded_bytes'] = first['recorded_bytes']
         result = build_inventory([first, second], self.evidence, self.manifests,
-                                 self.object_store, source_bucket='synthetic-source')
+                                 self.object_store, source_bucket='synthetic-source',
+                                 access_mapping=self.access_mapping)
         self.assertEqual(result['reconciliation']['input_file_count'], 1)
         self.assertEqual(result['reconciliation']['page_count'], 2)
         self.assertEqual([page['page_number'] for page in result['pages']], [1, 2])
@@ -192,7 +257,7 @@ class InventoryTests(unittest.TestCase):
         row = self.rows[0]
         self.object_store.head_errors[row['s3_key']] = FakeObjectStoreError()
         result = build_inventory([row], self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source')
+                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
         page = result['pages'][0]
         self.assertEqual(page['s3_status'], 'unavailable')
         self.assertEqual(page['s3_error'], 'AccessDenied')
@@ -202,7 +267,7 @@ class InventoryTests(unittest.TestCase):
     def test_inventory_output_accepts_local_paths_and_configured_s3_uris(self):
         build_inventory, write_inventory = self.inventory_api()
         result = build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source')
+                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
         local_file = self.root / 'out' / 'pages.jsonl'
         write_inventory(result, str(local_file), self.object_store)
         self.assertEqual(len(local_file.read_text().splitlines()), 30)

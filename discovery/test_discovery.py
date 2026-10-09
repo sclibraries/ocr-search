@@ -226,7 +226,13 @@ class ExportTests(unittest.TestCase):
                                                 after_file_id=2)).fetchone()[0])
         self.assertIn('9001>980>103>203', deep['collection_ancestry'])
         with self.assertRaises(ValueError):
-            sample_sql(collection_id=9001, hocr_media_use_id=777, limit=101)
+            sample_sql(collection_id=9001, hocr_media_use_id=777, limit=1001)
+
+    def test_explain_and_reviewed_large_batch_queries_are_bounded(self):
+        from discovery.export import sample_sql
+        query = sample_sql(collection_id=9001, hocr_media_use_id=777, limit=1000, explain=True)
+        self.assertTrue(query.startswith('EXPLAIN FORMAT=JSON\nWITH RECURSIVE'))
+        self.assertIn('LIMIT 1000', query)
 
     def test_cursor_resumes_after_every_row_when_a_file_has_multiple_page_associations(self):
         import sqlite3

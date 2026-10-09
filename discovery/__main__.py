@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from .catalog import Catalog
 from .export import sample_sql
-from .inventory import build_inventory, read_export, write_inventory
+from .inventory import build_inventory, read_access_mapping, read_export, write_inventory
+from .manifests import fetch_manifests
 from .runner import audit
 from .sources import LocalSource, S3Source
 
@@ -45,10 +46,21 @@ def main():
     sql.add_argument('--after-page-id', type=int)
     sql.add_argument('--after-item-id', type=int)
     sql.add_argument('--limit', type=int, default=100)
+    sql.add_argument('--explain', action='store_true', help='Print an EXPLAIN FORMAT=JSON query')
+    manifests = commands.add_parser('manifests', help='Fetch and privately checkpoint Compass IIIF manifests')
+    manifests.add_argument('--export-jsonl', required=True, type=Path)
+    manifests.add_argument('--output-dir', required=True, type=Path)
+    manifests.add_argument('--base-url', required=True)
+    manifests.add_argument('--requests-per-second', type=float, default=1.0)
+    manifests.add_argument('--timeout', type=float, default=10)
     inventory = commands.add_parser('inventory', help='Join a SQL export to S3 metadata and IIIF manifests')
     inventory.add_argument('--export-jsonl', required=True, type=Path)
-    inventory.add_argument('--evidence-file', required=True, type=Path)
-    inventory.add_argument('--manifest-dir', required=True, type=Path)
+    inventory.add_argument('--evidence-file', type=Path)
+    inventory.add_argument('--manifest-dir', type=Path, help='Optional converted IIIF manifests')
+    inventory.add_argument('--compass-manifest-dir', type=Path,
+                           help='Private output directory from discovery manifests')
+    inventory.add_argument('--access-mapping-file', required=True, type=Path,
+                           help='Reviewed schema-version 1 access mapping JSON')
     inventory.add_argument('--source-bucket', default=os.environ.get('OCR_SOURCE_BUCKET'))
     inventory.add_argument('--output-location', default=os.environ.get('OCR_INVENTORY_OUTPUT'))
     inventory.add_argument('--profile', help='Named AWS credential profile; never pass keys on the command line')
@@ -73,19 +85,33 @@ def main():
         try:
             query = sample_sql(args.collection_id, args.hocr_media_use_id,
                                args.after_file_id, args.limit,
-                               args.after_page_id, args.after_item_id)
+                               args.after_page_id, args.after_item_id, args.explain)
         except ValueError as error:
             parser.error(str(error))
         print(query)
+        return
+    if args.command == 'manifests':
+        try:
+            rows = read_export(args.export_jsonl)
+            entries = fetch_manifests(rows, args.output_dir, args.base_url,
+                                      requests_per_second=args.requests_per_second,
+                                      timeout=args.timeout)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            parser.error(str(error))
+        print(json.dumps({'manifest_count': len(entries),
+                          'index': str(args.output_dir / 'manifest-index.jsonl')}, indent=2))
         return
     if args.command == 'inventory':
         if not args.source_bucket:
             parser.error('set --source-bucket or OCR_SOURCE_BUCKET')
         if not args.output_location:
             parser.error('set --output-location or OCR_INVENTORY_OUTPUT')
+        if not args.manifest_dir and not args.compass_manifest_dir:
+            parser.error('set --manifest-dir or --compass-manifest-dir')
         try:
             rows = read_export(args.export_jsonl)
-            evidence = json.loads(args.evidence_file.read_text())
+            evidence = json.loads(args.evidence_file.read_text()) if args.evidence_file else None
+            access_mapping = read_access_mapping(args.access_mapping_file)
             import boto3
             from botocore.config import Config
             session = boto3.Session(profile_name=args.profile, region_name=args.region)
@@ -94,6 +120,8 @@ def main():
             s3 = session.client('s3', config=config)
             result = build_inventory(rows, evidence, args.manifest_dir, s3,
                                      source_bucket=args.source_bucket,
+                                     access_mapping=access_mapping,
+                                     compass_manifest_directory=args.compass_manifest_dir,
                                      sample_size=args.canvas_sample_size)
             locations = write_inventory(result, args.output_location, s3)
         except (OSError, ValueError, json.JSONDecodeError) as error:

@@ -21,6 +21,7 @@ node --test test/highlights.test.cjs
 python3 -m unittest discover -s indexer -p 'test_index.py'
 python3 -m unittest discovery.test_discovery
 python3 -m unittest discover -s discovery -p 'test_inventory.py'
+python3 -m unittest discover -s discovery -p 'test_manifests.py'
 ```
 
 `indexer/test_http.py` and the browser test need a running search API, Solr and ArchivesSpace;

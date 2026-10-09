@@ -20,36 +20,58 @@ python3 -m unittest discovery.test_discovery
 ## Generate a bounded metadata query
 
 `export-sql` prints a SELECT query and does not connect to a database. Provide the
-collection identifier and cursor appropriate for the metadata source you have
-reviewed:
+collection and media-use identifiers reviewed for the metadata source:
 
 ```sh
 python3 -m discovery export-sql \
-  --collection-id 12345 --hocr-media-use-id 67890 --after-file-id 0 --limit 100
+  --collection-id 12345 --hocr-media-use-id 67890 --limit 100
 ```
 
-Replace the example IDs with reviewed values. The limit is capped at 100 rows.
-Review the query and its target schema before running it in another system. Its
-results are candidates for further inspection, not a public-index allowlist.
-For later batches, resume from the last JSONL row using all three cursor fields:
-`--after-file-id`, `--after-page-id`, and `--after-item-id`.
+Replace the example IDs with reviewed values. Each query is capped at 1000 rows;
+the coordination repository's wrapper defaults to 100 and requires
+`--allow-large-batches` above that after query-plan review. `--explain` prints an
+`EXPLAIN FORMAT=JSON` query. Review it in the approved operator session before
+raising the batch size. Query output is candidates for further inspection, not a
+public-index allowlist.
+
+The `manifests` command fetches each exported item's Compass manifest at
+`/node/{item}/manifest`, using HTTPS and an operator-supplied base URL. It rate
+limits requests, privately saves the response and SHA-256, and resumes from its
+local index. Invoking this command makes network requests; use it only in the
+approved operator workflow. Tests supply fake responses and do not access a
+network:
+
+```sh
+python3 -m discovery manifests \
+  --export-jsonl ./relationships.jsonl \
+  --output-dir /path/to/private/compass-manifests \
+  --base-url https://<reviewed-origin> \
+  --requests-per-second 1
+```
 
 ## Build a page inventory
 
-The inventory command joins versioned SQL-export rows with a supplied evidence file,
-local converted IIIF manifests, and read-only S3 `HeadObject` metadata. The source
-bucket and output location are explicit settings; no bucket is embedded in the
-tool. Use a local synthetic fixture for tests, and keep operator data outside this
-public repository:
+The inventory command joins SQL-export rows with optional evidence, a converted
+manifest when available or the Compass manifest cache, and read-only S3 `HeadObject`
+metadata. It requires a reviewed access mapping file that maps Compass term IDs
+and/or names to `public` or `restricted`, and sets `published_without_terms` to one
+of those values. Unmapped terms remain `unknown`; without the file the command
+refuses to run. Evidence SHA-256 values are copied when present and remain empty
+when absent, for OCR-010 to compute while streaming. S3 size, version ID and ETag
+are recorded. Keep operator data outside this public repository:
 
 ```sh
 python3 -m discovery inventory \
   --export-jsonl ./relationships.jsonl \
-  --evidence-file ./evidence.json \
-  --manifest-dir ./manifests \
+  --compass-manifest-dir /path/to/private/compass-manifests \
+  --access-mapping-file /path/to/private/reviewed-access-mapping.json \
   --source-bucket "$OCR_SOURCE_BUCKET" \
   --output-location "$OCR_INVENTORY_OUTPUT"
 ```
+
+Add `--evidence-file PATH` when checksum evidence exists. Add `--manifest-dir PATH`
+when a converted IIIF manifest is available; it takes precedence over the Compass
+manifest for its matching item.
 
 `OCR_INVENTORY_OUTPUT` may be a private local path or an explicitly selected
 `s3://bucket/key` URI. S3 output is written only when that URI is supplied. The

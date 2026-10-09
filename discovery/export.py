@@ -5,7 +5,7 @@ EXPORT_SCHEMA_VERSION = 1
 
 
 def sample_sql(collection_id, hocr_media_use_id, after_file_id=0, limit=100,
-               after_page_id=None, after_item_id=None):
+               after_page_id=None, after_item_id=None, explain=False):
     """Return one JSON object per hOCR file/page association.
 
     Site-specific values are arguments instead of repository defaults. Canvas IDs,
@@ -25,8 +25,8 @@ def sample_sql(collection_id, hocr_media_use_id, after_file_id=0, limit=100,
         raise ValueError('page cursor must be a nonnegative integer')
     if after_item_id is not None and (type(after_item_id) is not int or after_item_id < 0):
         raise ValueError('item cursor must be a nonnegative integer')
-    if type(limit) is not int or not 1 <= limit <= 100:
-        raise ValueError('export limit must be 1–100')
+    if type(limit) is not int or not 1 <= limit <= 1000:
+        raise ValueError('export limit must be 1–1000')
 
     cursor_clause = f'f.fid>{after_file_id}'
     if after_page_id is not None:
@@ -36,7 +36,7 @@ def sample_sql(collection_id, hocr_media_use_id, after_file_id=0, limit=100,
             f'AND issue.entity_id>{after_item_id}))'
         )
 
-    return f"""WITH RECURSIVE subtree(node_id, depth, path) AS (
+    query = f"""WITH RECURSIVE subtree(node_id, depth, path) AS (
  SELECT {collection_id}, 0, CAST({collection_id} AS CHAR(4000))
  UNION ALL
  SELECT relation.entity_id, subtree.depth+1,
@@ -125,3 +125,4 @@ GROUP BY f.fid, f.filename, f.uri, f.filesize, page.entity_id, issue.entity_id,
 ORDER BY f.fid, page.entity_id, issue.entity_id LIMIT {limit}
 )
 SELECT candidate FROM candidates;"""
+    return f'EXPLAIN FORMAT=JSON\n{query}' if explain else query

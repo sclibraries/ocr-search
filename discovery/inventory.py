@@ -11,7 +11,6 @@ from urllib.parse import urlsplit
 
 PAGE_INVENTORY_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r'^[0-9a-f]{64}$')
-_RESTRICTED_TERMS = {'restricted', 'staff', 'staff only', 'private', 'confidential'}
 
 
 def read_export(path):
@@ -96,6 +95,8 @@ def _manifest_canvases(manifest):
 def _read_manifests(directory):
     by_uri = {}
     by_sha256 = {}
+    if not directory:
+        return by_uri, by_sha256
     for path in sorted(Path(directory).rglob('*.json')):
         raw = path.read_bytes()
         manifest = json.loads(raw)
@@ -112,6 +113,9 @@ def _read_manifests(directory):
 
 
 def _evidence_maps(evidence):
+    evidence = evidence or {}
+    if not isinstance(evidence, dict):
+        raise ValueError('evidence file must contain a JSON object')
     items_by_id = {}
     pages_by_item_order = {}
     pages_by_item_id = {}
@@ -127,30 +131,89 @@ def _evidence_maps(evidence):
         page_number = page.get('page', page.get('page_number'))
         if not item_key or type(page_number) is not int or page_number < 1:
             raise ValueError('evidence page needs an item and a positive page number')
-        if not _SHA256.fullmatch(str(page.get('sha256', ''))):
+        digest = str(page.get('sha256') or '').lower()
+        if digest and not _SHA256.fullmatch(digest):
             raise ValueError('evidence page has an invalid SHA-256 checksum')
         key = (item_key, page_number)
         if key in pages_by_item_order:
             raise ValueError(f'duplicate evidence page: {item_key} page {page_number}')
-        pages_by_item_order[key] = page
+        pages_by_item_order[key] = dict(page, sha256=digest)
         if page.get('page_id') is not None:
-            pages_by_item_id[(item_key, str(page['page_id']))] = page
+            pages_by_item_id[(item_key, str(page['page_id']))] = pages_by_item_order[key]
     return items_by_id, pages_by_item_order, pages_by_item_id
 
 
 def _item_evidence(raw_item_id, items_by_id):
     item = items_by_id.get(str(raw_item_id))
     if item is None:
-        raise ValueError(f'no evidence item maps to exported item {raw_item_id}')
+        return {'id': str(raw_item_id)}
     return item
 
 
-def _access_class(publication_state, access_terms, public_terms):
-    state = str(publication_state or '').strip().lower()
-    terms = {term.casefold() for term in _strings(access_terms)}
-    if state in {'unpublished', 'draft', '0', 'false', 'withdrawn'} or terms & _RESTRICTED_TERMS:
+def _prepare_access_mapping(mapping):
+    if not isinstance(mapping, dict) or mapping.get('schema_version') != 1:
+        raise ValueError('access mapping must be a schema-version 1 JSON object')
+    no_terms = str(mapping.get('published_without_terms', '')).strip().lower()
+    if no_terms not in {'public', 'restricted'}:
+        raise ValueError('access mapping needs published_without_terms set to public or restricted')
+    entries = mapping.get('terms')
+    if not isinstance(entries, list):
+        raise ValueError('access mapping terms must be a list')
+
+    by_id, by_name = {}, {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError('each access mapping term must be an object')
+        access = str(entry.get('access', '')).strip().lower()
+        if access not in {'public', 'restricted'}:
+            raise ValueError('access mapping term values must be public or restricted')
+        term_id = str(entry.get('id', '')).strip()
+        name = str(entry.get('name', '')).strip().casefold()
+        if not term_id and not name:
+            raise ValueError('each access mapping term needs an id or name')
+        for key, lookup in ((term_id, by_id), (name, by_name)):
+            if key:
+                if key in lookup and lookup[key] != access:
+                    raise ValueError(f'conflicting access mapping for term {key}')
+                lookup[key] = access
+    return {'published_without_terms': no_terms, 'by_id': by_id, 'by_name': by_name}
+
+
+def read_access_mapping(path):
+    """Load a required operator-reviewed access mapping file."""
+    try:
+        mapping = json.loads(Path(path).read_text())
+    except json.JSONDecodeError as error:
+        raise ValueError('access mapping file is not valid JSON') from error
+    _prepare_access_mapping(mapping)
+    return mapping
+
+
+def classify_access(publication_state, access_terms, access_term_ids, mapping):
+    """Classify only from an explicit reviewed mapping; unknown values fail closed."""
+    return _classify_access_prepared(publication_state, access_terms, access_term_ids,
+                                     _prepare_access_mapping(mapping))
+
+
+def _classify_access_prepared(publication_state, access_terms, access_term_ids, prepared):
+    state = str(publication_state or '').strip().casefold()
+    if state in {'unpublished', 'draft', '0', 'false', 'withdrawn'}:
         return 'restricted'
-    if state in {'published', '1', 'true'} and terms and terms <= public_terms:
+    if state not in {'published', '1', 'true'}:
+        return 'unknown'
+
+    term_ids = _strings(access_term_ids)
+    names = [name.casefold() for name in _strings(access_terms)]
+    if not term_ids and not names:
+        return prepared['published_without_terms']
+
+    id_values = [prepared['by_id'].get(term_id) for term_id in term_ids]
+    name_values = [prepared['by_name'].get(name) for name in names]
+    if 'restricted' in id_values or 'restricted' in name_values:
+        return 'restricted'
+    if term_ids and all(value == 'public' for value in id_values):
+        return 'public'
+    if names and all(value == 'public' for value in name_values):
         return 'public'
     return 'unknown'
 
@@ -235,13 +298,26 @@ def _report(pages, sample_size):
 
 
 def build_inventory(export_rows, evidence, manifest_directory, s3_client, source_bucket=None,
-                    public_access_terms=('public',), sample_size=10):
+                    access_mapping=None, compass_manifest_directory=None, sample_size=10):
     """Build the page inventory and reconciliation report without writing or uploading data."""
     if not 1 <= sample_size <= 100:
         raise ValueError('canvas sample size must be 1–100')
+    if access_mapping is None:
+        raise ValueError('a reviewed access mapping file is required')
+    prepared_access = _prepare_access_mapping(access_mapping)
     items_by_id, evidence_pages, evidence_pages_by_id = _evidence_maps(evidence)
     manifests, manifests_by_sha256 = _read_manifests(manifest_directory)
-    public_terms = {term.casefold() for term in _strings(public_access_terms)}
+    compass_manifests = {}
+    if compass_manifest_directory:
+        from .manifests import read_manifest_index
+        for entry in read_manifest_index(compass_manifest_directory):
+            manifest = json.loads((Path(compass_manifest_directory) / entry['filename']).read_bytes())
+            canvases = _manifest_canvases(manifest)
+            if not canvases or any(not canvas['id'] for canvas in canvases):
+                raise ValueError(f"Compass manifest has missing canvas identifiers: {entry['filename']}")
+            compass_manifests[entry['item_id']] = {
+                'url': entry['manifest_url'], 'canvases': canvases,
+            }
     seen_file_associations, seen_pages = set(), set()
     pages = []
 
@@ -275,19 +351,21 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
         evidence_page = evidence_pages_by_id.get((str(row['item_id']), str(row['page_id'])))
         if evidence_page is None:
             evidence_page = evidence_pages.get((stable_item_id, page_order))
-        if evidence_page is None:
-            raise ValueError(f'no checksum evidence for {stable_item_id} page {page_order}')
-
         manifest_url = row.get('manifest_url') or item.get('manifest_url')
         manifest_canvases = manifests.get(manifest_url)
         if manifest_canvases is None and item.get('manifest_sha256'):
             manifest_canvases = manifests_by_sha256.get(str(item['manifest_sha256']).lower())
         if manifest_canvases is None:
-            raise ValueError(f'no local converted manifest for {stable_item_id}')
+            compass_manifest = compass_manifests.get(str(row['item_id']))
+            if compass_manifest is None:
+                raise ValueError(f'no converted or Compass manifest for {stable_item_id}')
+            manifest_canvases = compass_manifest['canvases']
+            manifest_url = manifest_url or compass_manifest['url']
         canvases = manifest_canvases
         if page_order > len(canvases):
             raise ValueError(f'manifest has no canvas for {stable_item_id} page {page_order}')
         canvas = canvases[page_order - 1]
+        evidence_page = evidence_page or {}
         evidence_canvas = evidence_page.get('canvas') or evidence_page.get('canvas_id')
         supplied_canvas = row.get('canvas_id')
         if supplied_canvas and supplied_canvas != canvas['id']:
@@ -295,9 +373,9 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
         if evidence_canvas and evidence_canvas != canvas['id']:
             raise ValueError(f'evidence canvas does not match manifest for {stable_item_id} page {page_order}')
 
-        expected_sha256 = str(evidence_page['sha256']).lower()
+        expected_sha256 = str(evidence_page.get('sha256') or '').lower()
         supplied_sha256 = row.get('sha256') or row.get('expected_sha256')
-        if supplied_sha256 and str(supplied_sha256).lower() != expected_sha256:
+        if expected_sha256 and supplied_sha256 and str(supplied_sha256).lower() != expected_sha256:
             raise ValueError(f'export checksum does not match evidence for {stable_item_id} page {page_order}')
         bucket, key = _s3_source(row, source_bucket)
         if s3_client is None:
@@ -316,7 +394,7 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
         if recorded_size is not None and s3_size is not None and int(recorded_size) != s3_size:
             issues.append('recorded_size_mismatch')
         remote_checksum = head.get('ChecksumSHA256')
-        if remote_checksum:
+        if remote_checksum and expected_sha256:
             remote_sha256 = base64.b64decode(remote_checksum).hex()
             if remote_sha256 != expected_sha256:
                 issues.append('s3_checksum_mismatch')
@@ -336,6 +414,7 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             's3_bucket': bucket,
             's3_key': key,
             's3_version_id': head.get('VersionId'),
+            's3_etag': head.get('ETag'),
             's3_status': 'unavailable' if head_error else 'verified',
             's3_error': head_error,
             'recorded_bytes': int(recorded_size) if recorded_size is not None else None,
@@ -347,7 +426,9 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             'ancestry_depth_limit_reached': bool(row.get('ancestry_depth_limit_reached')),
             'publication_state': row.get('publication_state'),
             'access_terms': _strings(row.get('access_terms')),
-            'access': _access_class(row.get('publication_state'), row.get('access_terms'), public_terms),
+            'access': _classify_access_prepared(row.get('publication_state'),
+                                                row.get('access_terms'),
+                                                row.get('access_term_ids'), prepared_access),
             'issues': issues,
         }
         pages.append(page)
