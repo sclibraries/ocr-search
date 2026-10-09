@@ -1,4 +1,4 @@
-<schema name="ocr-pilot" version="1.6">
+<schema name="ocr-search" version="2.0">
   <uniqueKey>id</uniqueKey>
   <fieldType name="string" class="solr.StrField"/>
   <fieldType name="integer" class="solr.IntPointField" docValues="true"/>
@@ -18,14 +18,22 @@
   <field name="_version_" type="long" indexed="false" stored="false"/>
   <field name="corpus_id" type="string" indexed="true" stored="true" required="true"/>
   <field name="access" type="string" indexed="true" stored="true" required="true"/>
-  <field name="item_id" type="string" indexed="true" stored="true" required="true"/>
-  <field name="collection_id" type="string" indexed="true" stored="true" required="true"/>
+  <field name="item_id" type="string" indexed="true" stored="true" required="true" docValues="true"/>
+  <field name="collection_id" type="string" indexed="true" stored="true" required="true" docValues="true"/>
   <field name="title" type="string" indexed="false" stored="true"/>
+  <field name="series" type="string" indexed="true" stored="true" docValues="true"/>
+  <field name="issue_date" type="string" indexed="true" stored="true" docValues="true"/>
+  <field name="year" type="integer" indexed="true" stored="true" docValues="true"/>
   <field name="page_label" type="string" indexed="false" stored="true"/>
   <field name="page_number" type="integer" indexed="true" stored="true"/>
   <field name="canvas_id" type="string" indexed="true" stored="true"/>
   <field name="source_manifest_url" type="string" indexed="false" stored="true"/>
   <field name="aspace_record" type="string" indexed="false" stored="true"/>
   <field name="source_sha256" type="string" indexed="false" stored="true"/>
+  <field name="source_bucket" type="string" indexed="false" stored="true"/>
+  <field name="source_key" type="string" indexed="false" stored="true"/>
+  <field name="source_version_id" type="string" indexed="false" stored="true"/>
+  <field name="source_etag" type="string" indexed="false" stored="true"/>
+  <field name="schema_version" type="integer" indexed="false" stored="true"/>
   <field name="ocr" type="text_ocr" indexed="true" stored="true"/>
 </schema>

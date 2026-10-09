@@ -43,6 +43,73 @@ have been explicitly approved for public search. An item's public availability o
 technical readability is not, by itself, permission to index or redistribute its
 text.
 
+## Verify schema and core replacement
+
+Run schema, grouping, facet, and OCR-format checks only on a disposable Solr instance.
+The verifier accepts loopback URLs on a random port (it rejects the usual Solr ports
+8983 and 18983) and removes its synthetic documents when it finishes. It compares the
+four committed synthetic hOCR pages with their MiniOCR conversions and requires
+identical highlights.
+The reported byte totals are the serialized OCR field payloads. For a physical index
+size comparison, load the same pages into two empty cores and read each core's
+`index.sizeInBytes` from the CoreAdmin `STATUS` response.
+
+`indexer/miniocr.py` exposes `hocr_to_miniocr(text)` as a standalone helper. The local
+folder indexer continues to submit hOCR; the helper is available for an indexer caller
+to opt into MiniOCR separately.
+
+From the repository root, build and start a no-volume Solr container with an automatic
+loopback port:
+
+```sh
+docker build -t ocr-search-solr-verify ./solr
+docker run --rm -d --name ocr-search-solr-verify \
+  -p 127.0.0.1::8983 \
+  -e SOLR_HEAP=512m \
+  -e SOLR_OPTS=-Dsolr.config.lib.enabled=true \
+  ocr-search-solr-verify solr-precreate ocr /opt/ocr-config
+docker port ocr-search-solr-verify 8983/tcp
+```
+
+Set `OCR_TEST_PORT` to the port printed by `docker port`. The verifier prints group
+counts, facet counts, legacy-document compatibility, highlight comparisons, and the
+synthetic OCR byte totals:
+
+```sh
+OCR_TEST_PORT=49152
+python3 solr/verify_schema.py \
+  --solr-url "http://127.0.0.1:${OCR_TEST_PORT}/solr/ocr"
+```
+
+Create a candidate core from the same configuration, verify it, then swap the core
+names. `ocr_next` keeps the previous core available for rollback until it is safe to
+remove:
+
+```sh
+docker exec ocr-search-solr-verify bin/solr create -c ocr_next -d /opt/ocr-config
+python3 solr/verify_schema.py \
+  --solr-url "http://127.0.0.1:${OCR_TEST_PORT}/solr/ocr_next"
+
+curl --fail --silent --show-error --get \
+  --data-urlencode 'action=SWAP' \
+  --data-urlencode 'core=ocr' \
+  --data-urlencode 'other=ocr_next' \
+  --data-urlencode 'wt=json' \
+  "http://127.0.0.1:${OCR_TEST_PORT}/solr/admin/cores"
+curl --fail "http://127.0.0.1:${OCR_TEST_PORT}/solr/ocr/admin/ping?wt=json"
+python3 solr/verify_schema.py \
+  --solr-url "http://127.0.0.1:${OCR_TEST_PORT}/solr/ocr"
+```
+
+CoreAdmin switches the loaded core names in place. Repeat the same `SWAP` request to
+roll back while both cores are available. Keep the old core until the replacement has
+been verified and the rollback window has closed.
+Stop the throwaway container when finished:
+
+```sh
+docker stop ocr-search-solr-verify
+```
+
 ## Stop Solr
 
 ```sh
