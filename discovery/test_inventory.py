@@ -154,6 +154,68 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(page['s3_version_id'], 'version-101')
         self.assertEqual(page['s3_size'], 101)
 
+    def test_manifest_metadata_is_configurable_normalized_and_reconciled_per_item(self):
+        build_inventory, _ = self.inventory_api()
+        first_path = self.manifests / 'demo-item-00.json'
+        first = json.loads(first_path.read_text())
+        first['label'] = {'en': ['Synthetic Weekly']}
+        first['metadata'] = [
+            {'label': 'Publication title', 'value': 'Synthetic Weekly'},
+            {'label': 'Issue date', 'value': '1927-12'},
+        ]
+        first_path.write_text(json.dumps(first))
+
+        second_path = self.manifests / 'demo-item-01.json'
+        second = json.loads(second_path.read_text())
+        second['label'] = ''
+        second['metadata'] = [{'label': 'Date', 'value': 'circa 1927'}]
+        second_path.write_text(json.dumps(second))
+
+        third_path = self.manifests / 'demo-item-02.json'
+        third = json.loads(third_path.read_text())
+        third['label'] = 'Sample Journal'
+        third['metadata'] = [{'label': 'Publication', 'value': 'Sample Journal'},
+                             {'label': 'Date', 'value': '1927'}]
+        third_path.write_text(json.dumps(third))
+
+        result = build_inventory(
+            self.rows[:6], self.evidence, self.manifests, self.object_store,
+            source_bucket='synthetic-source', access_mapping=self.access_mapping,
+            manifest_metadata_labels={
+                'series': ['Publication', 'Publication title'],
+                'issue_date': ['Issue date', 'Date'],
+            })
+
+        pages = {(page['item_id'], page['page_number']): page for page in result['pages']}
+        self.assertEqual(pages[('demo-item-00', 1)]['item_title'], 'Synthetic Weekly')
+        self.assertEqual(pages[('demo-item-00', 1)]['series'], 'Synthetic Weekly')
+        self.assertEqual(pages[('demo-item-00', 1)]['issue_date'], '1927-12')
+        self.assertEqual(pages[('demo-item-01', 1)]['item_title'], '')
+        self.assertEqual(pages[('demo-item-01', 1)]['series'], '')
+        self.assertEqual(pages[('demo-item-01', 1)]['issue_date'], '')
+        self.assertEqual(pages[('demo-item-02', 1)]['issue_date'], '1927')
+        self.assertEqual(result['reconciliation']['missing_item_titles'], 1)
+        self.assertEqual(result['reconciliation']['missing_series'], 1)
+        self.assertEqual(result['reconciliation']['missing_issue_dates'], 1)
+        self.assertEqual(result['reconciliation']['dates_unparsed'], 1)
+
+    def test_metadata_label_settings_are_read_from_json(self):
+        from discovery.inventory import read_manifest_metadata_labels
+
+        path = self.root / 'manifest-metadata-labels.json'
+        path.write_text(json.dumps({
+            'series': ['Newspaper title', 'Publication'],
+            'issue_date': ['Issue date', 'Date'],
+        }))
+        self.assertEqual(read_manifest_metadata_labels(path), {
+            'series': ['Newspaper title', 'Publication'],
+            'issue_date': ['Issue date', 'Date'],
+        })
+
+        path.write_text(json.dumps({'series': 'Publication'}))
+        with self.assertRaisesRegex(ValueError, 'list of label names'):
+            read_manifest_metadata_labels(path)
+
     def test_inventory_requires_a_reviewed_access_mapping(self):
         build_inventory, _ = self.inventory_api()
         with self.assertRaisesRegex(ValueError, 'access mapping'):
@@ -167,6 +229,11 @@ class InventoryTests(unittest.TestCase):
         item_id = rows[0]['item_id']
         compass_manifest = {
             '@id': f'https://compass.example.test/node/{item_id}/manifest',
+            'label': 'Fixture weekly item',
+            'metadata': [
+                {'label': 'Publication', 'value': 'Fixture Weekly'},
+                {'label': 'Issue date', 'value': 'December 7, 1927'},
+            ],
             'sequences': [{'canvases': [
                 {'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'},
                 {'@id': f'https://canvas.example.test/{item_id}/2', 'label': 'Page 2'},
@@ -181,6 +248,10 @@ class InventoryTests(unittest.TestCase):
             result = build_inventory(rows, None, None, self.object_store,
                                      source_bucket='synthetic-source',
                                      compass_manifest_directory=manifest_dir,
+                                     manifest_metadata_labels={
+                                         'series': ['Publication'],
+                                         'issue_date': ['Issue date'],
+                                     },
                                      access_mapping=self.access_mapping)
 
         pages = result['pages']
@@ -191,6 +262,9 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual([page['sha256'] for page in pages], ['', ''])
         self.assertEqual([page['access'] for page in pages], ['public', 'restricted'])
         self.assertEqual(pages[0]['manifest_url'], compass_manifest['@id'])
+        self.assertEqual(pages[0]['item_title'], 'Fixture weekly item')
+        self.assertEqual(pages[0]['series'], 'Fixture Weekly')
+        self.assertEqual(pages[0]['issue_date'], '1927-12-07')
         self.assertEqual(pages[0]['s3_etag'], '"etag-101"')
 
     def test_inventory_reproduces_committed_synthetic_fixture_evidence(self):

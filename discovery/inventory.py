@@ -1,6 +1,7 @@
 """Join a versioned relationship export to synthetic/approved evidence and IIIF manifests."""
 
 import base64
+from datetime import date, datetime
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ from urllib.parse import urlsplit
 
 PAGE_INVENTORY_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r'^[0-9a-f]{64}$')
+_METADATA_LABEL_FIELDS = ('series', 'issue_date')
 
 
 def read_export(path):
@@ -77,6 +79,120 @@ def _label(value):
     return ''
 
 
+def _text(value):
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, dict):
+        if '@value' in value:
+            return _text(value['@value'])
+        for language in ('en', '@none'):
+            if language in value:
+                text = _text(value[language])
+                if text:
+                    return text
+        for part in value.values():
+            text = _text(part)
+            if text:
+                return text
+    if isinstance(value, (list, tuple)):
+        for part in value:
+            text = _text(part)
+            if text:
+                return text
+    return ''
+
+
+def _prepare_manifest_metadata_labels(labels):
+    if labels is None:
+        labels = {}
+    if not isinstance(labels, dict) or set(labels) - set(_METADATA_LABEL_FIELDS):
+        raise ValueError('manifest metadata labels must map series and issue_date to label-name lists')
+    prepared = {}
+    for field in _METADATA_LABEL_FIELDS:
+        values = labels.get(field, [])
+        if not isinstance(values, list):
+            raise ValueError(f'manifest metadata {field} must be a list of label names')
+        normalized = []
+        seen = set()
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f'manifest metadata {field} must be a list of label names')
+            name = value.strip()
+            if name.casefold() not in seen:
+                normalized.append(name)
+                seen.add(name.casefold())
+        prepared[field] = normalized
+    return prepared
+
+
+def read_manifest_metadata_labels(path):
+    """Read per-field IIIF metadata label aliases from a JSON settings file."""
+    try:
+        labels = json.loads(Path(path).read_text())
+    except json.JSONDecodeError as error:
+        raise ValueError('manifest metadata label settings are not valid JSON') from error
+    return _prepare_manifest_metadata_labels(labels)
+
+
+def _manifest_metadata_value(manifest, field, labels):
+    aliases = labels[field]
+    if not aliases:
+        return ''
+    aliases_by_casefold = {label.casefold() for label in aliases}
+    matches = {}
+    metadata = manifest.get('metadata')
+    if not isinstance(metadata, list):
+        return ''
+    for entry in metadata:
+        if not isinstance(entry, dict):
+            continue
+        label = _text(entry.get('label')).casefold()
+        if label not in aliases_by_casefold or label in matches:
+            continue
+        value = _text(entry.get('value'))
+        if value:
+            matches[label] = value
+    for alias in aliases:
+        value = matches.get(alias.casefold())
+        if value:
+            return value
+    return ''
+
+
+def _normalize_issue_date(value):
+    """Normalize recognized full or partial dates without inferring missing parts."""
+    value = value.strip()
+    if not value:
+        return ''
+    partial = re.fullmatch(r'(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?', value)
+    if partial:
+        year_text, month_text, day_text = partial.groups()
+        year = int(year_text)
+        try:
+            if month_text is None:
+                date(year, 1, 1)
+                return f'{year:04d}'
+            month = int(month_text)
+            if day_text is None:
+                date(year, month, 1)
+                return f'{year:04d}-{month:02d}'
+            return date(year, month, int(day_text)).isoformat()
+        except ValueError:
+            return ''
+
+    for date_format in ('%B %d, %Y', '%b %d, %Y', '%B %Y', '%b %Y'):
+        try:
+            parsed = datetime.strptime(value, date_format)
+        except ValueError:
+            continue
+        if '%d' in date_format:
+            return parsed.date().isoformat()
+        return f'{parsed.year:04d}-{parsed.month:02d}'
+    return ''
+
+
 def _manifest_canvases(manifest):
     sequences = manifest.get('sequences')
     if isinstance(sequences, list) and sequences:
@@ -106,9 +222,10 @@ def _read_manifests(directory):
         canvases = _manifest_canvases(manifest)
         if not canvases or any(not canvas['id'] for canvas in canvases):
             raise ValueError(f'manifest has missing canvases or canvas identifiers: {path.name}')
+        manifest_entry = {'manifest': manifest, 'canvases': canvases}
         if uri:
-            by_uri[uri] = canvases
-        by_sha256[hashlib.sha256(raw).hexdigest()] = canvases
+            by_uri[uri] = manifest_entry
+        by_sha256[hashlib.sha256(raw).hexdigest()] = manifest_entry
     return by_uri, by_sha256
 
 
@@ -250,7 +367,7 @@ def _head_error_code(error):
     return str(code or type(error).__name__)[:80]
 
 
-def _report(pages, sample_size):
+def _report(pages, sample_size, dates_unparsed=()):
     counts = {}
     deep_items = set()
     multiple_parent_items = set()
@@ -286,6 +403,10 @@ def _report(pages, sample_size):
         'schema_version': 1,
         'input_file_count': len({page['file_id'] for page in pages}),
         'page_count': len(pages),
+        'missing_item_titles': len({page['item_id'] for page in pages if not page['item_title']}),
+        'missing_series': len({page['item_id'] for page in pages if not page['series']}),
+        'missing_issue_dates': len({page['item_id'] for page in pages if not page['issue_date']}),
+        'dates_unparsed': len(dates_unparsed),
         's3_head_errors': sum(page['s3_status'] == 'unavailable' for page in pages),
         'size_mismatches': sum('recorded_size_mismatch' in page['issues'] for page in pages),
         'pages_by_collection': dict(sorted(counts.items())),
@@ -298,13 +419,15 @@ def _report(pages, sample_size):
 
 
 def build_inventory(export_rows, evidence, manifest_directory, s3_client, source_bucket=None,
-                    access_mapping=None, compass_manifest_directory=None, sample_size=10):
+                    access_mapping=None, compass_manifest_directory=None, sample_size=10,
+                    manifest_metadata_labels=None):
     """Build the page inventory and reconciliation report without writing or uploading data."""
     if not 1 <= sample_size <= 100:
         raise ValueError('canvas sample size must be 1–100')
     if access_mapping is None:
         raise ValueError('a reviewed access mapping file is required')
     prepared_access = _prepare_access_mapping(access_mapping)
+    prepared_metadata_labels = _prepare_manifest_metadata_labels(manifest_metadata_labels)
     items_by_id, evidence_pages, evidence_pages_by_id = _evidence_maps(evidence)
     manifests, manifests_by_sha256 = _read_manifests(manifest_directory)
     compass_manifests = {}
@@ -316,10 +439,11 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             if not canvases or any(not canvas['id'] for canvas in canvases):
                 raise ValueError(f"Compass manifest has missing canvas identifiers: {entry['filename']}")
             compass_manifests[entry['item_id']] = {
-                'url': entry['manifest_url'], 'canvases': canvases,
+                'url': entry['manifest_url'], 'manifest': manifest, 'canvases': canvases,
             }
     seen_file_associations, seen_pages = set(), set()
     pages = []
+    dates_unparsed = set()
 
     for row in export_rows:
         if not isinstance(row, dict) or row.get('schema_version') != 1:
@@ -352,16 +476,17 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
         if evidence_page is None:
             evidence_page = evidence_pages.get((stable_item_id, page_order))
         manifest_url = row.get('manifest_url') or item.get('manifest_url')
-        manifest_canvases = manifests.get(manifest_url)
-        if manifest_canvases is None and item.get('manifest_sha256'):
-            manifest_canvases = manifests_by_sha256.get(str(item['manifest_sha256']).lower())
-        if manifest_canvases is None:
+        manifest_entry = manifests.get(manifest_url)
+        if manifest_entry is None and item.get('manifest_sha256'):
+            manifest_entry = manifests_by_sha256.get(str(item['manifest_sha256']).lower())
+        if manifest_entry is None:
             compass_manifest = compass_manifests.get(str(row['item_id']))
             if compass_manifest is None:
                 raise ValueError(f'no converted or Compass manifest for {stable_item_id}')
-            manifest_canvases = compass_manifest['canvases']
+            manifest_entry = compass_manifest
             manifest_url = manifest_url or compass_manifest['url']
-        canvases = manifest_canvases
+        manifest = manifest_entry['manifest']
+        canvases = manifest_entry['canvases']
         if page_order > len(canvases):
             raise ValueError(f'manifest has no canvas for {stable_item_id} page {page_order}')
         canvas = canvases[page_order - 1]
@@ -399,6 +524,12 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             if remote_sha256 != expected_sha256:
                 issues.append('s3_checksum_mismatch')
         ancestry = _paths(row.get('collection_ancestry'))
+        item_title = _text(manifest.get('label'))
+        series = _manifest_metadata_value(manifest, 'series', prepared_metadata_labels)
+        raw_issue_date = _manifest_metadata_value(manifest, 'issue_date', prepared_metadata_labels)
+        issue_date = _normalize_issue_date(raw_issue_date)
+        if raw_issue_date and not issue_date:
+            dates_unparsed.add(stable_item_id)
         page = {
             'schema_version': PAGE_INVENTORY_SCHEMA_VERSION,
             'file_id': row['file_id'],
@@ -409,6 +540,9 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             'page_label': canvas['label'] or evidence_page.get('label', ''),
             'canvas_id': canvas['id'],
             'manifest_url': manifest_url,
+            'item_title': item_title,
+            'series': series,
+            'issue_date': issue_date,
             'aspace_record': (evidence_page.get('aspace_record') or item.get('aspace_record')
                               or row.get('aspace_record')),
             's3_bucket': bucket,
@@ -434,7 +568,7 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
         pages.append(page)
 
     pages.sort(key=lambda page: (page['item_id'], page['page_number'], str(page['file_id'])))
-    return {'pages': pages, 'reconciliation': _report(pages, sample_size)}
+    return {'pages': pages, 'reconciliation': _report(pages, sample_size, dates_unparsed)}
 
 
 def _local_sidecar(path):

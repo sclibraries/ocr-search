@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 from .catalog import Catalog
 from .export import sample_sql
-from .inventory import build_inventory, read_access_mapping, read_export, write_inventory
+from .inventory import (build_inventory, read_access_mapping, read_export,
+                        read_manifest_metadata_labels, write_inventory)
 from .manifests import fetch_manifests
 from .runner import audit
 from .sources import LocalSource, S3Source
@@ -59,6 +60,8 @@ def main():
     inventory.add_argument('--manifest-dir', type=Path, help='Optional converted IIIF manifests')
     inventory.add_argument('--compass-manifest-dir', type=Path,
                            help='Private output directory from discovery manifests')
+    inventory.add_argument('--manifest-metadata-labels-file', type=Path,
+                           help='JSON mapping series and issue_date to lists of IIIF metadata labels')
     inventory.add_argument('--access-mapping-file', required=True, type=Path,
                            help='Reviewed schema-version 1 access mapping JSON')
     inventory.add_argument('--source-bucket', default=os.environ.get('OCR_SOURCE_BUCKET'))
@@ -112,6 +115,8 @@ def main():
             rows = read_export(args.export_jsonl)
             evidence = json.loads(args.evidence_file.read_text()) if args.evidence_file else None
             access_mapping = read_access_mapping(args.access_mapping_file)
+            metadata_labels = (read_manifest_metadata_labels(args.manifest_metadata_labels_file)
+                               if args.manifest_metadata_labels_file else None)
             import boto3
             from botocore.config import Config
             session = boto3.Session(profile_name=args.profile, region_name=args.region)
@@ -122,7 +127,8 @@ def main():
                                      source_bucket=args.source_bucket,
                                      access_mapping=access_mapping,
                                      compass_manifest_directory=args.compass_manifest_dir,
-                                     sample_size=args.canvas_sample_size)
+                                     sample_size=args.canvas_sample_size,
+                                     manifest_metadata_labels=metadata_labels)
             locations = write_inventory(result, args.output_location, s3)
         except (OSError, ValueError, json.JSONDecodeError) as error:
             parser.error(str(error))
