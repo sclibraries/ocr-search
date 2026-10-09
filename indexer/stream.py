@@ -474,11 +474,18 @@ def _year(issue_date):
     return ''
 
 
+def _optional_text(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
 def _build_document(row, corpus_id, source_sha256, hocr):
     page_number = row['page_number']
-    issue_date = str(row.get('issue_date') or '')
+    issue_date = _optional_text(row.get('issue_date'))
     collection = _collection_id(row)
-    return {
+    document = {
         'id': row['_stream_page_id'],
         'corpus_id': corpus_id,
         'access': 'public',
@@ -487,20 +494,25 @@ def _build_document(row, corpus_id, source_sha256, hocr):
         'page_label': str(row.get('page_label') or ''),
         'canvas_id': str(row['canvas_id']),
         'source_manifest_url': str(row.get('manifest_url') or row.get('source_manifest_url') or ''),
-        'aspace_record': str(row.get('aspace_record') or ''),
         'collection_id': collection,
-        'title': str(row.get('item_title') or ''),
-        'series': str(row.get('series') or ''),
-        'issue_date': issue_date,
-        'year': _year(issue_date),
-        'source_bucket': str(row.get('s3_bucket') or ''),
-        'source_key': str(row.get('s3_key') or ''),
-        'source_version_id': str(row.get('s3_version_id') or ''),
-        'source_etag': str(row.get('s3_etag') or ''),
-        'source_sha256': source_sha256,
         'ocr': hocr,
         'schema_version': INDEX_SCHEMA_VERSION,
     }
+    optional_fields = {
+        'aspace_record': _optional_text(row.get('aspace_record')),
+        'title': _optional_text(row.get('item_title')),
+        'series': _optional_text(row.get('series')),
+        'issue_date': issue_date,
+        'year': _year(issue_date),
+        'source_bucket': _optional_text(row.get('s3_bucket')),
+        'source_key': _optional_text(row.get('s3_key')),
+        'source_version_id': _optional_text(row.get('s3_version_id')),
+        'source_etag': _optional_text(row.get('s3_etag')),
+        'source_sha256': _optional_text(source_sha256),
+    }
+    document.update({key: value for key, value in optional_fields.items()
+                     if value is not None and value != ''})
+    return document
 
 
 def _error_text(error):

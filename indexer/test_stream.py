@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from indexer.stream import SolrClient, index_inventory, page_document_id
+from indexer.stream import SolrClient, _build_document, index_inventory, page_document_id
 
 
 S3_ENDPOINT = os.environ.get('OCR_010_TEST_S3_ENDPOINT')
@@ -45,38 +45,10 @@ class StreamingIndexTests(unittest.TestCase):
                               endpoint_url=S3_ENDPOINT,
                               aws_access_key_id='test', aws_secret_access_key='test')
         cls.solr = SolrClient(SOLR_URL, timeout=5)
-        field_types = {
-            'id': 'string', 'corpus_id': 'string', 'access': 'string', 'item_id': 'string',
-            'page_number': 'pint', 'page_label': 'string', 'canvas_id': 'string',
-            'source_manifest_url': 'string', 'aspace_record': 'string',
-            'collection_id': 'string', 'title': 'string', 'series': 'string',
-            'issue_date': 'string', 'year': 'pint', 'source_bucket': 'string',
-            'source_key': 'string', 'source_version_id': 'string', 'source_etag': 'string',
-            'source_sha256': 'string', 'ocr': 'text_general', 'schema_version': 'pint',
-        }
-        for name, field_type in field_types.items():
-            if name == 'id':
-                continue
-            exists = False
-            try:
-                with urllib.request.urlopen(SOLR_URL + '/schema/fields/' + name,
-                                           timeout=5) as response:
-                    if response.status == 200:
-                        exists = True
-            except HTTPError as error:
-                if error.code != 404:
-                    raise
-                error.close()
-            action = 'replace-field' if exists else 'add-field'
-            payload = json.dumps({action: {
-                'name': name, 'type': field_type, 'stored': True, 'indexed': True,
-                'multiValued': False,
-            }}).encode()
-            request = urllib.request.Request(SOLR_URL + '/schema', data=payload,
-                                            headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(request, timeout=5) as response:
-                if response.status != 200:
-                    raise RuntimeError(f'could not add test-only Solr field {name}')
+        with urllib.request.urlopen(SOLR_URL + '/schema/fields/year', timeout=5) as response:
+            year_field = json.load(response)['field']
+        if year_field.get('type') != 'integer':
+            raise RuntimeError('throwaway Solr must load the repository schema.xml')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='ocr-010-synthetic-')
@@ -203,6 +175,31 @@ class StreamingIndexTests(unittest.TestCase):
         self.assertEqual(result['indexed'], 0)
         self.assertEqual(self.documents(), [])
 
+    def test_optional_dates_and_series_use_repository_schema(self):
+        year_only = self.row('item-year-only', 1, 'https://example.test/canvas/year-only/1',
+                             body=synthetic_hocr('yearonly'), issue_date='1927')
+        partial = self.row('item-partial', 1, 'https://example.test/canvas/partial/1',
+                           body=synthetic_hocr('partial'), issue_date='1927-12', series='')
+        full = self.row('item-full', 1, 'https://example.test/canvas/full/1',
+                        body=synthetic_hocr('full'), issue_date='1927-12-07')
+        no_date = self.row('item-no-date', 1, 'https://example.test/canvas/no-date/1',
+                           body=synthetic_hocr('nodate'), item_title='', aspace_record='',
+                           s3_etag='')
+        no_date.pop('issue_date')
+        inventory = self.write_inventory('optional-fields', [year_only, partial, full, no_date])
+
+        result = self.run_index(inventory, 'optional-fields')
+
+        self.assertEqual((result['indexed'], result['failed']), (4, 0))
+        docs = {doc['item_id']: doc for doc in self.documents()}
+        for item_id in ('item-year-only', 'item-partial', 'item-full'):
+            self.assertEqual(docs[item_id]['year'], 1927)
+        self.assertEqual(docs['item-partial']['issue_date'], '1927-12')
+        self.assertEqual(docs['item-full']['issue_date'], '1927-12-07')
+        for field in ('issue_date', 'year', 'title', 'aspace_record', 'source_etag'):
+            self.assertNotIn(field, docs['item-no-date'])
+        self.assertNotIn('series', docs['item-partial'])
+
     def test_resume_is_idempotent_and_stale_pages_are_withdrawn(self):
         first = self.row('item-resume', 1, 'https://example.test/canvas/resume/1',
                          body=synthetic_hocr('one'))
@@ -314,6 +311,36 @@ class RetryPolicyTests(unittest.TestCase):
         with self.assertRaises(HTTPError):
             _retry(operation, 5, 0.25, lambda _: None)
         self.assertEqual(len(attempts), 1)
+
+
+class DocumentFieldTests(unittest.TestCase):
+    def test_empty_optional_fields_are_omitted_and_partial_dates_have_year(self):
+        row = {
+            '_stream_page_id': 'corpus:item:canvas-hash',
+            'item_id': 'item',
+            'page_number': 1,
+            'canvas_id': 'https://example.test/canvas/1',
+            'collection_ancestry': [['collection', 'item']],
+            'manifest_url': 'https://example.test/manifest',
+            'item_title': ' ',
+            'aspace_record': '',
+            'series': None,
+            'issue_date': '',
+            's3_bucket': '',
+            's3_key': None,
+            's3_version_id': '',
+            's3_etag': '  ',
+        }
+        document = _build_document(row, 'corpus', 'a' * 64, '<html/>')
+        for field in ('title', 'aspace_record', 'series', 'issue_date', 'year',
+                      'source_bucket', 'source_key', 'source_version_id', 'source_etag'):
+            self.assertNotIn(field, document)
+        self.assertEqual(document['source_sha256'], 'a' * 64)
+
+        for issue_date in ('1927', '1927-12', '1927-12-07'):
+            row['issue_date'] = issue_date
+            dated = _build_document(row, 'corpus', 'a' * 64, '<html/>')
+            self.assertEqual(dated['year'], 1927)
 
 
 if __name__ == '__main__':

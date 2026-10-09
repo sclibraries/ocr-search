@@ -171,8 +171,41 @@ IIIF manifests, and `OCR_EVIDENCE_FILE` to the matching evidence JSON file.
 `indexer/test_stream.py` is an integration acceptance test. It skips unless
 `OCR_010_TEST_S3_ENDPOINT` and `OCR_010_TEST_SOLR_URL` identify the dedicated
 loopback LocalStack endpoint on port 14567 and throwaway `ocr-010-test` Solr core
-on port 18984. It rejects other hosts, ports and core paths. The tests use only
-invented hOCR and metadata.
+on port 18984. It rejects other hosts, ports and core paths. Build and start the
+test Solr from this repository's Dockerfile and configuration; its schema and
+`solrconfig.xml` are loaded as-is, with no test-only field additions:
+
+```sh
+docker build -t ocr-search-test-solr solr/
+docker run --rm --name ocr-010-test-solr \
+  -p 127.0.0.1:18984:8983 \
+  -e SOLR_HEAP=512m \
+  -e SOLR_OPTS=-Dsolr.config.lib.enabled=true \
+  ocr-search-test-solr solr-precreate ocr-010-test /opt/ocr-config
+```
+
+Start LocalStack in a separate terminal:
+
+```sh
+docker run --rm --name ocr-010-test-localstack \
+  -p 127.0.0.1:14567:4566 \
+  -e SERVICES=s3 \
+  -e PERSISTENCE=0 \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -e AWS_ACCESS_KEY_ID=test \
+  -e AWS_SECRET_ACCESS_KEY=test \
+  localstack/localstack:3.8
+```
+
+Run the tests from another terminal:
+
+```sh
+OCR_010_TEST_S3_ENDPOINT=http://127.0.0.1:14567 \
+OCR_010_TEST_SOLR_URL=http://127.0.0.1:18984/solr/ocr-010-test \
+python3 -m unittest indexer.test_stream
+```
+
+The tests use only invented hOCR and metadata.
 
 `indexer/test_http.py` is an integration test for a live search API and Solr
 service. It is skipped unless both `OCR_SEARCH_BASE_URL` and an existing
