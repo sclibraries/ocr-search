@@ -20,6 +20,18 @@ class OcrSearchControllerTest < Minitest::Test
     end
   end
 
+  def test_url_helpers_use_app_prefix_from_the_view_helpers
+    controller = OcrSearchController.new(q: 'mascot')
+    controller.instance_variable_set(:@query, 'mascot')
+    controller.instance_variable_set(:@filters, {})
+    controller.instance_variable_set(:@sort, 'relevance')
+    controller.instance_variable_set(:@per_page, 10)
+
+    assert_equal '/digital-text?q=mascot&sort=relevance', controller.search_url
+    assert_equal '/digital-text/items/demo-a?q=mascot', controller.item_page_url('demo-a')
+    refute_respond_to controller, :app_prefix
+  end
+
   def test_filters_chips_sort_and_grouped_results_render_from_v2_response
     api = FakeAPI.new(search: Response.new('200', JSON.generate(search_payload)))
 

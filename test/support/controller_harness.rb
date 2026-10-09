@@ -44,8 +44,8 @@ class ApplicationController
     ERB.new(source).result(context.instance_eval { binding })
   end
 
-  def app_prefix(path)
-    path
+  def helpers
+    ControllerViewContext.new(self, self.class.declared_helper_methods)
   end
 end
 
@@ -63,7 +63,7 @@ class ControllerViewContext
   end
 
   def app_prefix(path)
-    @controller.app_prefix(path)
+    path
   end
 
   def link_to(label, href, attributes = {})

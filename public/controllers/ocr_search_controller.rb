@@ -120,7 +120,8 @@ class OcrSearchController < ApplicationController
     }.merge(changes)
     state.delete_if { |_key, value| value.nil? || value.to_s.empty? }
     query_string = URI.encode_www_form(state)
-    query_string.empty? ? app_prefix('/digital-text') : app_prefix('/digital-text') + '?' + query_string
+    path = helpers.app_prefix('/digital-text')
+    query_string.empty? ? path : path + '?' + query_string
   end
 
   def item_page_url(item_id, canvas_id = nil)
@@ -133,7 +134,7 @@ class OcrSearchController < ApplicationController
     query['page'] = @page_number if @filters && @filters['item'] && @page_number && @page_number != '1'
     query['per_page'] = '25' if @filters && @filters['item']
     query['canvas'] = canvas_id unless canvas_id.to_s.empty?
-    path = app_prefix('/digital-text/items/' + item_id.to_s)
+    path = helpers.app_prefix('/digital-text/items/' + item_id.to_s)
     query.empty? ? path : path + '?' + URI.encode_www_form(query)
   end
 
