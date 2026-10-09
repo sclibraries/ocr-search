@@ -6,6 +6,8 @@ require_relative '../../lib/search_client'
 class OcrSearchController < ApplicationController
   ITEM_ID = /\A[a-z0-9-]{1,64}\z/.freeze
 
+  helper_method :search_url, :item_page_url, :page_url, :page_match
+
   def index
     @page_title = 'Search digitized newspapers'
     @query = params[:q].to_s.strip

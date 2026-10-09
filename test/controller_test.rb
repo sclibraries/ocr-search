@@ -8,6 +8,18 @@ class OcrSearchControllerTest < Minitest::Test
   Response = Struct.new(:code, :body)
   API = 'http://fake-api.test/api/ocr/search'
 
+  def test_view_context_exposes_declared_helpers_but_not_controller_actions
+    controller = OcrSearchController.new(q: 'mascot')
+    controller.instance_variable_set(:@query, 'mascot')
+    controller.instance_variable_set(:@filters, {})
+
+    assert_equal '/digital-text/items/demo-a?q=mascot',
+                 controller.render_view_source('<%= item_page_url("demo-a") %>')
+    assert_raises(NoMethodError) do
+      controller.render_view_source('<%= self.index %>')
+    end
+  end
+
   def test_filters_chips_sort_and_grouped_results_render_from_v2_response
     api = FakeAPI.new(search: Response.new('200', JSON.generate(search_payload)))
 
