@@ -1,8 +1,12 @@
 require 'json'
+require 'digest'
+require 'fileutils'
 require 'minitest/autorun'
 require 'minitest/mock'
+require 'tmpdir'
 require_relative 'support/controller_harness'
 require_relative '../public/controllers/ocr_search_controller'
+require_relative '../public/asset_versions'
 
 class OcrSearchControllerTest < Minitest::Test
   Response = Struct.new(:code, :body)
@@ -30,6 +34,39 @@ class OcrSearchControllerTest < Minitest::Test
     assert_equal '/digital-text?q=mascot&sort=relevance', controller.search_url
     assert_equal '/digital-text/items/demo-a?q=mascot', controller.item_page_url('demo-a')
     refute_respond_to controller, :app_prefix
+  end
+
+  def test_layout_head_asset_urls_use_stable_content_versions
+    asset_names = %w[ocr_search.css ocr_highlights.css ocr_highlights.js]
+    asset_directory = File.expand_path('../public/assets', __dir__)
+    expected_versions = asset_names.to_h do |name|
+      [name, Digest::SHA256.file(File.join(asset_directory, name)).hexdigest[0, 12]]
+    end
+
+    html = PluginHeadView.new.render_layout_head
+    expected_versions.each do |name, version|
+      assert_includes html, "/archives/assets/#{name}?v=#{version}"
+    end
+    assert_equal html, PluginHeadView.new.render_layout_head
+
+    assert_equal expected_versions, OcrSearchAssetVersions::VERSIONS
+
+    Dir.mktmpdir do |directory|
+      asset_names.each do |name|
+        FileUtils.cp(File.join(asset_directory, name), File.join(directory, name))
+      end
+
+      original_versions = OcrSearchAssetVersions.calculate(directory)
+      assert_equal expected_versions, original_versions
+      assert_equal original_versions, OcrSearchAssetVersions.calculate(directory)
+
+      File.open(File.join(directory, 'ocr_highlights.css'), 'ab') { |file| file.write("\n") }
+      updated_versions = OcrSearchAssetVersions.calculate(directory)
+      refute_equal original_versions['ocr_highlights.css'], updated_versions['ocr_highlights.css']
+      %w[ocr_search.css ocr_highlights.js].each do |name|
+        assert_equal original_versions[name], updated_versions[name]
+      end
+    end
   end
 
   def test_filters_chips_sort_and_grouped_results_render_from_v2_response
@@ -359,6 +396,51 @@ class OcrSearchControllerTest < Minitest::Test
     def item(endpoint, id)
       @item_requests << {endpoint: endpoint, id: id}
       @item_response || Response.new('404', '{}')
+    end
+  end
+
+  class PluginHeadView < ControllerViewContext
+    def initialize
+      super(ApplicationController.new, [])
+    end
+
+    def app_prefix(path)
+      "/archives#{path}"
+    end
+
+    def stylesheet_link_tag(source, options = {})
+      attributes = {href: source}.merge(options)
+      "<link #{html_attributes(attributes)}>"
+    end
+
+    def javascript_include_tag(source, options = {})
+      attributes = {src: source}.merge(options)
+      "<script #{html_attributes(attributes)}></script>"
+    end
+
+    def render_layout_head
+      template = File.expand_path('../public/views/layout_head.html.erb', __dir__)
+      ERB.new(File.read(template)).result(binding)
+    end
+
+    private
+
+    def html_attributes(attributes)
+      attributes.flat_map do |name, value|
+        if name == :data
+          value.map { |data_name, data_value| html_attribute("data-#{data_name.to_s.tr('_', '-')}", data_value) }
+        elsif value == true
+          [html_attribute(name, name)]
+        elsif value.nil? || value == false
+          []
+        else
+          [html_attribute(name, value)]
+        end
+      end.join(' ')
+    end
+
+    def html_attribute(name, value)
+      %(#{name.to_s.tr('_', '-')}="#{CGI.escapeHTML(value.to_s)}")
     end
   end
 end

@@ -16,12 +16,15 @@ test('mismatched dimensions and invalid coordinates do not draw on another image
 test('opening adds all overlays without zoom; navigation alone focuses a word',()=>{
  const vm=require('node:vm'),fs=require('node:fs');
  let onOpen, fits=0, overlays=0;
+ const cssUrl='/archives/assets/ocr_highlights.css?v=0123456789ab', stylesheets=[];
  const status={textContent:''}, buttons={};
  for(const name of ['next','previous','fit']) buttons[name]={};
  const controls={querySelector:s=>s==='[role="status"]'?status:buttons[s.match(/data-ocr-(\w+)/)[1]],querySelectorAll:()=>Object.values(buttons)};
  const root={dataset:{ocrHighlights:JSON.stringify({snippets:[snippet]})},querySelector:()=>controls};
- const document={currentScript:{src:'http://localhost/assets/ocr_highlights.js'},head:{appendChild(){}},createElement:()=>({classList:{toggle(){}},setAttribute(){}}),addEventListener:(name,fn)=>{onOpen=fn;}};
+ const document={currentScript:{src:'http://localhost/assets/ocr_highlights.js',getAttribute:name=>name==='data-ocr-highlights-css-url'?cssUrl:null},head:{appendChild:node=>stylesheets.push(node)},createElement:()=>({classList:{toggle(){}},setAttribute(){}}),addEventListener:(name,fn)=>{onOpen=fn;}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../public/assets/ocr_highlights.js'),'utf8'),{document});
+ assert.equal(stylesheets.length,1);
+ assert.equal(stylesheets[0].href,cssUrl);
  const image={getContentSize:()=>({x:4542,y:6368}),imageToViewportRectangle:()=>({})};
  const viewer={world:{getItemAt:()=>image},addOverlay:()=>overlays++,viewport:{fitBounds:()=>fits++,goHome(){}}};
  onOpen({target:{closest:()=>root},detail:{viewer}});

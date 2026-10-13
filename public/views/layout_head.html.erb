@@ -1,3 +1,4 @@
-<%= stylesheet_link_tag app_prefix('/assets/ocr_search.css'), media: 'all' %>
+<%= stylesheet_link_tag app_prefix("/assets/ocr_search.css?v=#{OcrSearchAssetVersions::VERSIONS.fetch('ocr_search.css')}"), media: 'all' %>
 
-<%= javascript_include_tag app_prefix('/assets/ocr_highlights.js'), defer: true %>
+<%= javascript_include_tag app_prefix("/assets/ocr_highlights.js?v=#{OcrSearchAssetVersions::VERSIONS.fetch('ocr_highlights.js')}"), defer: true,
+  data: {ocr_highlights_css_url: app_prefix("/assets/ocr_highlights.css?v=#{OcrSearchAssetVersions::VERSIONS.fetch('ocr_highlights.css')}")} %>

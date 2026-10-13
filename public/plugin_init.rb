@@ -1,3 +1,5 @@
+require_relative 'asset_versions'
+
 Rails.application.config.after_initialize do
   I18n.backend.store_translations(:en, ocr_search: {navigation: 'Newspaper text'})
   $MAIN_MENU.push(['/digital-text', 'ocr_search.navigation'])

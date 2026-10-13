@@ -18,6 +18,7 @@ From the repository root:
 ```sh
 ruby test/catalog_test.rb
 ruby test/search_client_test.rb
+ruby test/controller_test.rb
 node --test test/highlights.test.cjs
 python3 -m unittest discover -s indexer -p 'test_index.py'
 python3 -m unittest discover -s indexer -p 'test_stream.py'

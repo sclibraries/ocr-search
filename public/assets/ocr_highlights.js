@@ -22,11 +22,13 @@
   }
   if (typeof module !== 'undefined') module.exports = {boxesForPage: boxesForPage};
   if (typeof document === 'undefined') return;
-  // A separate stylesheet avoids stale cached pilot styles after this upgrade.
-  var stylesheet = document.createElement('link');
-  stylesheet.rel = 'stylesheet';
-  stylesheet.href = document.currentScript.src.replace(/ocr_highlights\.js.*$/, 'ocr_highlights.css?v=1');
-  document.head.appendChild(stylesheet);
+  var stylesheetUrl = document.currentScript && document.currentScript.getAttribute('data-ocr-highlights-css-url');
+  if (stylesheetUrl) {
+    var stylesheet = document.createElement('link');
+    stylesheet.rel = 'stylesheet';
+    stylesheet.href = stylesheetUrl;
+    document.head.appendChild(stylesheet);
+  }
 
   document.addEventListener('digital-viewer:open', function (event) {
     var root = event.target.closest('.ocr-search[data-ocr-highlights]');
