@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+
+
+args_path = Path(os.environ["OCR_TEST_CURL_ARGS"])
+with args_path.open("a", encoding="utf-8") as output:
+    output.write(json.dumps(sys.argv[1:]) + "\n")
+
+sys.stdout.write(os.environ.get("OCR_TEST_CURL_RESPONSE", ""))
+sys.exit(int(os.environ.get("OCR_TEST_CURL_STATUS", "0")))

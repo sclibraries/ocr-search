@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+
+args_path = Path(os.environ["OCR_TEST_SOLR_ARGS"])
+args_path.write_text(json.dumps(sys.argv[1:]), encoding="utf-8")
+time.sleep(float(os.environ.get("OCR_TEST_SOLR_DELAY", "0")))

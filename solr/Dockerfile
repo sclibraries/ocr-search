@@ -4,4 +4,7 @@ RUN mkdir -p /opt/solr/contrib/ocr/lib \
     && curl -fL --retry 3 https://github.com/dbmdz/solr-ocrhighlighting/releases/download/0.10.1/solr-ocrhighlighting-0.10.1.jar -o /opt/solr/contrib/ocr/lib/ocr.jar \
     && echo 'd10b86684004ebeec3d938a64608135e80c1cef58a176dacb9a556f0b5a78823  /opt/solr/contrib/ocr/lib/ocr.jar' | sha256sum -c -
 COPY config /opt/ocr-config
+COPY ocr-entrypoint.sh /opt/ocr-entrypoint.sh
+RUN chmod 755 /opt/ocr-entrypoint.sh
 USER solr
+ENTRYPOINT ["/opt/ocr-entrypoint.sh"]
