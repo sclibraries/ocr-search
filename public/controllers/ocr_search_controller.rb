@@ -6,7 +6,7 @@ require_relative '../../lib/search_client'
 class OcrSearchController < ApplicationController
   ITEM_ID = /\A[a-z0-9-]{1,64}\z/.freeze
 
-  helper_method :search_url, :item_page_url, :page_url, :page_match
+  helper_method :search_url, :item_path_url, :item_page_url, :page_url, :page_match
 
   def index
     @page_title = 'Search digitized newspapers'
@@ -66,17 +66,27 @@ class OcrSearchController < ApplicationController
     @filters['item'] = @item_id
     @sort = params[:sort].to_s.empty? ? 'relevance' : params[:sort].to_s
     @page_number = params.fetch(:page, '1').to_s
+    @item_context_query = item_context_query
     @per_page = 25
     @item = nil
     @pages = []
     @matching_pages = []
     @selected_page = nil
+    @selected = nil
+    @jump_missed = false
+    @requested_page_number = params[:page_number].to_s
+    requested_page_number = positive_integer(@requested_page_number, maximum: 2_147_483_647)
+    @missed_page_number = positive_integer(params[:missed])
     @catalog_page = nil
 
     raise KeyError unless ITEM_ID.match?(@item_id)
     raise ArgumentError unless @query.length <= 200
+    raise ArgumentError unless @requested_page_number.empty? || requested_page_number
+    @requested_page_number = requested_page_number.to_s if requested_page_number
 
-    response = OcrPilot::SearchClient.get_item(ENV.fetch('OCR_SEARCH_API_URL', ''), @item_id)
+    response = OcrPilot::SearchClient.get_item(
+      ENV.fetch('OCR_SEARCH_API_URL', ''), @item_id, item_page_parameters
+    )
     unless response.code == '200'
       return render(:show, status: :not_found) if response.code == '404'
       @error = error_message(response.code)
@@ -87,7 +97,27 @@ class OcrSearchController < ApplicationController
     raise IOError unless @item.fetch('item_id') == @item_id
     @pages = @item.fetch('pages')
     raise IOError unless @pages.is_a?(Array)
-    @selected_page = @pages.find { |page| page['canvas_id'] == params[:canvas].to_s } unless params[:canvas].to_s.empty?
+    @page_count = Integer(@item.fetch('page_count'))
+    @pages_per_page = Integer(@item.fetch('pages_per_page', 50))
+    @pages_page = Integer(@item.fetch('pages_page', params.fetch(:pages_page, '1')))
+    @pages_total_pages = Integer(@item.fetch('pages_total_pages', (@page_count.to_f / @pages_per_page).ceil))
+    @jump_missed = @item.fetch('jump_missed', false) == true
+    if requested_page_number
+      jump_page = if @jump_missed
+                    @pages.last
+                  else
+                    @pages.find { |page| Integer(page.fetch('page_number')) >= requested_page_number }
+                  end
+      raise IOError unless jump_page
+      return redirect_to(page_url(jump_page, missed: @requested_page_number)) if @jump_missed
+      return redirect_to(page_url(jump_page))
+    end
+    @selected = @item['selected']
+    if @selected
+      raise IOError unless @selected.is_a?(Hash) && @selected['canvas_id']
+      @selected_page = @pages.find { |page| page['canvas_id'] == @selected['canvas_id'] }
+      raise IOError unless @selected_page
+    end
     raise KeyError if !params[:canvas].to_s.empty? && !@selected_page
     @page_title = @item.fetch('title', 'Search digitized newspapers')
     @catalog_page = catalog_page_for(@item_id, @selected_page) if @selected_page
@@ -124,17 +154,17 @@ class OcrSearchController < ApplicationController
     query_string.empty? ? path : path + '?' + query_string
   end
 
-  def item_page_url(item_id, canvas_id = nil)
+  def item_path_url(item_id)
     raise ArgumentError, 'Invalid item identifier' unless ITEM_ID.match?(item_id.to_s)
-    query = {'q' => @query}
-    %w[series year_from year_to collection].each do |key|
-      query[key] = @filters[key] if @filters && @filters[key]
-    end
-    query['sort'] = @sort if @sort && @sort != 'relevance'
-    query['page'] = @page_number if @filters && @filters['item'] && @page_number && @page_number != '1'
-    query['per_page'] = '25' if @filters && @filters['item']
+    helpers.app_prefix('/digital-text/items/' + item_id.to_s)
+  end
+
+  def item_page_url(item_id, canvas_id = nil, changes = {})
+    query = item_context_query
     query['canvas'] = canvas_id unless canvas_id.to_s.empty?
-    path = helpers.app_prefix('/digital-text/items/' + item_id.to_s)
+    query.merge!(changes)
+    path = item_path_url(item_id)
+    query.delete_if { |_key, value| value.nil? || value.to_s.empty? }
     query.empty? ? path : path + '?' + URI.encode_www_form(query)
   end
 
@@ -142,8 +172,10 @@ class OcrSearchController < ApplicationController
     @matching_pages.find { |page| page['canvas_id'] == canvas_id }
   end
 
-  def page_url(page)
-    item_page_url(@item_id, page['canvas_id'])
+  def page_url(page, pages_page: @pages_page, missed: nil)
+    changes = {'pages_page' => pages_page}
+    changes['missed'] = missed unless missed.nil?
+    item_page_url(@item_id, page['canvas_id'], changes)
   end
 
   private
@@ -173,6 +205,30 @@ class OcrSearchController < ApplicationController
     parameters
   end
 
+  def item_page_parameters
+    parameters = {'pages_per_page' => '50'}
+    if !params[:canvas].to_s.empty?
+      parameters['canvas'] = params[:canvas].to_s
+    elsif !params[:page_number].to_s.empty?
+      parameters['page_number'] = params[:page_number].to_s
+    else
+      parameters['pages_page'] = params[:pages_page].to_s.empty? ? '1' : params[:pages_page].to_s
+    end
+    parameters
+  end
+
+  def item_context_query
+    query = {'q' => @query}
+    %w[series year_from year_to collection].each do |key|
+      query[key] = @filters[key] if @filters && @filters[key]
+    end
+    query['sort'] = @sort if @sort && @sort != 'relevance'
+    query['page'] = @page_number if @filters && @filters['item'] && @page_number && @page_number != '1'
+    query['per_page'] = '25' if @filters && @filters['item']
+    query.delete_if { |_key, value| value.nil? || value.to_s.empty? }
+    query
+  end
+
   def accept_response(response)
     return true if response.code == '200'
     @error = error_message(response.code)
@@ -194,6 +250,17 @@ class OcrSearchController < ApplicationController
 
   def nonblank(value)
     value.to_s.empty? ? nil : value.to_s
+  end
+
+  def positive_integer(value, maximum: nil)
+    string = value.to_s
+    return nil unless string.match?(/\A[0-9]+\z/)
+
+    number = string.to_i
+    return nil unless number.positive?
+    return nil if maximum && number > maximum
+
+    number
   end
 
   def catalog_page_for(item_id, selected_page)

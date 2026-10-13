@@ -12,8 +12,6 @@
       <% if @item['aspace_record'] %><%= link_to 'View in the finding aid', @item['aspace_record'] %><% end %>
       <%= link_to 'Search this item', search_url('item' => @item_id, 'per_page' => '25', 'page' => nil) %>
     </p>
-    <% if @item['truncated'] %><p class="ocr-muted">This list shows the first 1,000 public pages in the item.</p><% end %>
-
     <% if @selected_page %>
       <section class="ocr-selected-page" aria-labelledby="ocr-selected-page-heading">
         <h2 id="ocr-selected-page-heading"><%= h(@selected_page['page_label'] || "Page #{@selected_page['page_number']}") %></h2>
@@ -41,17 +39,73 @@
           </div>
         <% end %>
       </section>
-    <% end %>
 
-    <nav aria-label="Pages in this item" class="ocr-pages">
-      <h2>Pages in this item</h2>
-      <ul>
-        <% @pages.each do |page| %>
-          <% current = @selected_page && @selected_page['canvas_id'] == page['canvas_id'] %>
-          <li><%= link_to page['page_label'] || "Page #{page['page_number']}", page_url(page), 'aria-current' => (current ? 'page' : nil) %></li>
+      <% previous_page = @selected['previous'] %>
+      <% next_page = @selected['next'] %>
+      <nav aria-label="Page navigation" class="ocr-page-navigation">
+        <% if previous_page %>
+          <%= link_to "‹ Page #{previous_page['page_number']}", page_url(previous_page) %>
+          <span aria-hidden="true"> · </span>
         <% end %>
-      </ul>
-    </nav>
+        <% current_page_number = @selected['page_number'].to_i %>
+        <% current_position = @selected['position'].to_i %>
+        <% current_page_label = if current_page_number == current_position
+                                  "Page #{current_page_number} of #{@page_count}"
+                                else
+                                  "Page #{current_page_number} (#{current_position} of #{@page_count})"
+                                end %>
+        <%= link_to current_page_label, page_url(@selected_page), 'aria-current' => 'page' %>
+        <% if next_page %>
+          <span aria-hidden="true"> · </span>
+          <%= link_to "Page #{next_page['page_number']} ›", page_url(next_page) %>
+        <% end %>
+      </nav>
+      <% if @missed_page_number %><p class="ocr-muted" role="status">There is no page <%= h(@missed_page_number) %>; showing page <%= h(@selected_page['page_number']) %>.</p><% end %>
+      <form class="ocr-page-jump" action="<%= h(item_path_url(@item_id)) %>" method="get">
+        <% @item_context_query.each do |name, value| %>
+          <input type="hidden" name="<%= h(name) %>" value="<%= h(value) %>">
+        <% end %>
+        <label for="ocr-page-number">Go to page</label>
+        <input id="ocr-page-number" type="number" name="page_number" min="1" value="<%= h(@requested_page_number) %>">
+        <button type="submit">Go</button>
+      </form>
+      <p><%= link_to 'Back to page list', item_page_url(@item_id, nil, {'pages_page' => @pages_page}) %></p>
+    <% else %>
+      <nav aria-label="Pages in this item" class="ocr-pages">
+        <h2>Pages in this item (<%= @page_count %>)</h2>
+        <ul>
+          <% @pages.each do |page| %>
+            <% page_label = page['page_label'] || "Page #{page['page_number']}" %>
+            <li><%= link_to page['page_number'].to_s, page_url(page), 'aria-label' => page_label, 'title' => page_label %></li>
+          <% end %>
+        </ul>
+      </nav>
+
+      <nav aria-label="Page set navigation" class="ocr-page-set-navigation">
+        <% if @pages_page > 1 %>
+          <%= link_to '‹ Previous', item_page_url(@item_id, nil, {'pages_page' => @pages_page - 1}) %>
+        <% else %>
+          <span aria-disabled="true">‹ Previous</span>
+        <% end %>
+        <span aria-hidden="true"> · </span>
+        <span>Pages <%= (@pages_page - 1) * @pages_per_page + 1 %>–<%= [@pages_page * @pages_per_page, @page_count].min %> of <%= @page_count %></span>
+        <span aria-hidden="true"> · </span>
+        <% if @pages_page < @pages_total_pages %>
+          <%= link_to 'Next ›', item_page_url(@item_id, nil, {'pages_page' => @pages_page + 1}) %>
+        <% else %>
+          <span aria-disabled="true">Next ›</span>
+        <% end %>
+      </nav>
+
+      <form class="ocr-page-jump" action="<%= h(item_path_url(@item_id)) %>" method="get">
+        <% @item_context_query.each do |name, value| %>
+          <input type="hidden" name="<%= h(name) %>" value="<%= h(value) %>">
+        <% end %>
+        <label for="ocr-page-number">Go to page</label>
+        <input id="ocr-page-number" type="number" name="page_number" min="1" value="<%= h(@requested_page_number) %>">
+        <button type="submit">Go</button>
+      </form>
+    <% end %>
 
     <% if !@selected_page && !@matching_pages.empty? %>
       <section class="ocr-item-excerpts" aria-labelledby="ocr-item-excerpts-heading">

@@ -9,7 +9,7 @@ module Rails
 end
 
 class ApplicationController
-  attr_reader :params, :rendered_status
+  attr_reader :params, :rendered_status, :redirect_location
 
   def self.helper_method(*names)
     @declared_helper_methods ||= []
@@ -32,6 +32,11 @@ class ApplicationController
       'not_found' => 404, :not_found => 404,
       'bad_request' => 400, :bad_request => 400
     }.fetch(status, status)
+  end
+
+  def redirect_to(location, status: :found)
+    @redirect_location = location
+    @rendered_status = {'found' => 302, :found => 302}.fetch(status, status)
   end
 
   def render_view(name)

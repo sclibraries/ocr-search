@@ -62,17 +62,53 @@ module OcrSearchFakeAPI
     Response.new('200', JSON.generate(payload))
   end
 
-  def self.item(id)
+  def self.item(id, parameters = {})
     item = sample_items.find { |row| row['item_id'] == id }
     return Response.new('404', '{}') unless item
 
-    details = item.reject { |key, _value| %w[all_pages matching_pages].include?(key) }
-    details['page_count'] = item['all_pages'].length
-    details['truncated'] = false
-    details['pages'] = item['all_pages'].map do |page|
+    pages = item['all_pages'].map do |page|
       page.reject { |key, _value| key == 'snippets' }
     end
+    page_count = pages.length
+    pages_per_page = (parameters['pages_per_page'] || '50').to_i
+    selected_index = nil
+    jump_missed = false
+    if parameters['canvas']
+      selected_index = pages.index { |page| page['canvas_id'] == parameters['canvas'] }
+      return Response.new('404', '{}') unless selected_index
+      pages_page = selected_index / pages_per_page + 1
+    elsif parameters['page_number']
+      jump_position = pages.index { |page| page['page_number'] >= parameters['page_number'].to_i }
+      jump_missed = jump_position.nil?
+      jump_position ||= pages.length - 1
+      pages_page = jump_position / pages_per_page + 1
+    else
+      pages_page = (parameters['pages_page'] || '1').to_i
+    end
+    start = (pages_page - 1) * pages_per_page
+    slice = pages.slice(start, pages_per_page) || []
+    details = item.reject { |key, _value| %w[all_pages matching_pages].include?(key) }
+    details['page_count'] = page_count
+    details['pages_page'] = pages_page
+    details['pages_per_page'] = pages_per_page
+    details['pages_total_pages'] = (page_count.to_f / pages_per_page).ceil
+    details['truncated'] = start.positive? || start + slice.length < page_count
+    details['pages'] = slice
+    details['jump_missed'] = jump_missed if parameters['page_number']
+    if selected_index
+      selected = pages[selected_index]
+      details['selected'] = {
+        'position' => selected_index + 1, 'page_number' => selected['page_number'],
+        'page_label' => selected['page_label'], 'canvas_id' => selected['canvas_id'],
+        'previous' => selected_index.positive? ? selected_page(pages[selected_index - 1]) : nil,
+        'next' => selected_index < page_count - 1 ? selected_page(pages[selected_index + 1]) : nil
+      }
+    end
     Response.new('200', JSON.generate(details))
+  end
+
+  def self.selected_page(page)
+    %w[page_number page_label canvas_id].to_h { |key| [key, page[key]] }
   end
 
   def self.sample_items
@@ -113,8 +149,8 @@ module OcrPilot
       OcrSearchFakeAPI.search(parameters)
     end
 
-    def self.get_item(_endpoint, id)
-      OcrSearchFakeAPI.item(id)
+    def self.get_item(_endpoint, id, parameters = {})
+      OcrSearchFakeAPI.item(id, parameters)
     end
   end
 end

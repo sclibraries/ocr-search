@@ -27,6 +27,19 @@ class SearchClientTest < Minitest::Test
     assert_raises(ArgumentError) { OcrPilot::SearchClient.item_uri('http://localhost/api/ocr/search', '../private') }
   end
 
+  def test_item_uri_forwards_only_the_paging_contract_parameters
+    uri = OcrPilot::SearchClient.item_uri('http://localhost/api/ocr/search', 'demo-3', {
+      'pages_page' => '12', 'pages_per_page' => '50', 'page_number' => '575',
+      'canvas' => 'https://example.org/canvas/demo-3/575', 'q' => 'ignored'
+    })
+
+    assert_equal '/api/ocr/items/demo-3', uri.path
+    assert_equal({
+      'pages_page' => '12', 'pages_per_page' => '50', 'page_number' => '575',
+      'canvas' => 'https://example.org/canvas/demo-3/575'
+    }, URI.decode_www_form(uri.query).to_h)
+  end
+
   def test_search_query_and_item_are_encoded
     uri = OcrPilot::SearchClient.uri('http://localhost/api/ocr/search', {'q' => '"two words"', 'item' => 'demo-3'})
     query = URI.decode_www_form(uri.query).to_h

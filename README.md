@@ -162,13 +162,30 @@ provenance and does not itself select a page viewer.
 
 ### `GET /api/ocr/items/{id}`
 
-Returns item metadata and the public page list, ordered by `page_number`, with no
-OCR text. The response contains `item_id`, `title`, `series`, `issue_date`,
-`collection_id`, `aspace_record`, `source_manifest_url`, `page_count`, `truncated`
-and `pages` (`page_number`, `page_label`, `canvas_id`). At most 1,000 pages are
-returned; `truncated` is true when more exist. An item without public pages returns
-HTTP 404. The item endpoint uses the same upstream timeouts and rate limits as
-search.
+Returns item metadata and one slice of the public page list, ordered by
+`page_number` and then `canvas_id`, with no OCR text. Only these parameters are
+accepted; an unsupported or invalid parameter returns HTTP 400.
+
+| Parameter | Contract |
+| --- | --- |
+| `pages_page` | Optional positive, 1-based slice number within the supported Solr result offset; defaults to 1. |
+| `pages_per_page` | Optional integer slice size from 1 to 100; defaults to 50. |
+| `page_number` | Optional integer from 1 to 2,147,483,647. Returns the slice containing the first public page whose `page_number` is at least this value, and ignores `pages_page`. If there is no such page, returns the last slice with `jump_missed: true`. |
+| `canvas` | Optional nonempty UTF-8 canvas identifier up to 2,048 characters with no control characters. Returns the containing slice and selected page metadata. It cannot be combined with `page_number`; an unknown canvas returns HTTP 404. |
+
+The response keeps `item_id`, `title`, `series`, `issue_date`, `collection_id`,
+`aspace_record`, `source_manifest_url`, `page_count`, `truncated` and `pages`
+(`page_number`, `page_label`, `canvas_id`). It adds `pages_page`, `pages_per_page`
+and `pages_total_pages` (the number of slices). `truncated` is true whenever public
+pages exist outside the returned slice. With `canvas`, `selected` contains the
+1-based `position` among public pages ordered by `page_number` then `canvas_id`,
+`page_number`, `page_label`, `canvas_id`, and `previous` and
+`next` page objects (each page object has `page_number`, `page_label` and
+`canvas_id`, or is `null` at an end). With `page_number`, `jump_missed` indicates
+whether no public page number was at least the requested value. `page_count` is
+the total number of public pages. An item without public pages returns HTTP 404.
+The item endpoint uses the same upstream timeouts and rate limits as search and
+makes at most three Solr requests per call.
 
 Bad input returns HTTP 400, an unavailable Solr service returns HTTP 503, and a
 rate-limited request returns HTTP 429 with `{"error":"busy"}`. The API keeps

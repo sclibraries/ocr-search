@@ -4,6 +4,7 @@ require 'uri'
 module OcrPilot
   module SearchClient
     SEARCH_PARAMETERS = %w[q series year_from year_to collection item sort page per_page].freeze
+    ITEM_PARAMETERS = %w[pages_page pages_per_page page_number canvas].freeze
     ITEM_ID = /\A[a-z0-9-]{1,64}\z/.freeze
 
     def self.uri(endpoint, parameters = {})
@@ -18,12 +19,18 @@ module OcrPilot
       uri
     end
 
-    def self.item_uri(endpoint, id)
+    def self.item_uri(endpoint, id, parameters = {})
       raise ArgumentError, 'Invalid item identifier' unless ITEM_ID.match?(id.to_s)
       uri = search_endpoint(endpoint)
       raise IOError, 'Search endpoint must end in /search' unless uri.path.match?(%r{/search\z})
       uri.path = uri.path.sub(/search\z/, "items/#{id}")
-      uri.query = nil
+      query = parameters.each_with_object({}) do |(key, value), result|
+        name = key.to_s
+        next unless ITEM_PARAMETERS.include?(name)
+        next if value.nil? || value.to_s.empty?
+        result[name] = value.to_s
+      end
+      uri.query = query.empty? ? nil : URI.encode_www_form(query)
       uri
     end
 
@@ -31,8 +38,8 @@ module OcrPilot
       request(uri(endpoint, parameters))
     end
 
-    def self.get_item(endpoint, id)
-      request(item_uri(endpoint, id))
+    def self.get_item(endpoint, id, parameters = {})
+      request(item_uri(endpoint, id, parameters))
     end
 
     def self.search_endpoint(endpoint)
