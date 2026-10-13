@@ -18,7 +18,7 @@
         <% match = page_match(@selected_page['canvas_id']) %>
         <% if match %>
           <% Array(match['snippets']).first(5).each do |snippet| %>
-            <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+            <p class="ocr-excerpt">…<%= sanitize(trim_trailing_excerpt_periods(snippet['html']), tags: ['mark'], attributes: []) %>…</p>
           <% end %>
         <% elsif !@query.empty? %>
           <p class="ocr-muted">No excerpt is available for this page in the current search.</p>
@@ -114,7 +114,7 @@
           <article class="ocr-page-excerpt">
             <h3><%= link_to "View #{page['page_label'] || "page #{page['page_number']}"}", page_url(page) %></h3>
             <% Array(page['snippets']).first(5).each do |snippet| %>
-              <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+              <p class="ocr-excerpt">…<%= sanitize(trim_trailing_excerpt_periods(snippet['html']), tags: ['mark'], attributes: []) %>…</p>
             <% end %>
           </article>
         <% end %>

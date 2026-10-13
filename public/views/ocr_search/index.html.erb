@@ -29,6 +29,24 @@
     <div class="ocr-results-layout">
       <aside class="ocr-filter-panel" aria-label="Search filters">
         <h2>Filters</h2>
+        <% if @filters.values_at('series', 'year_from', 'year_to', 'collection', 'item').any? %>
+        <section class="ocr-active-filters" aria-labelledby="ocr-active-filters-heading">
+          <h3 id="ocr-active-filters-heading">Active filters</h3>
+          <ul class="ocr-chip-list">
+            <% if @filters['series'] %><li><%= link_to "Publication: #{@filters['series']} ×", search_url('series' => nil, 'page' => nil), 'aria-label' => "Remove Publication filter: #{@filters['series']}" %></li><% end %>
+            <% if @filters['year_from'] %><li><%= link_to "From: #{@filters['year_from']} ×", search_url('year_from' => nil, 'page' => nil), 'aria-label' => "Remove start year filter: #{@filters['year_from']}" %></li><% end %>
+            <% if @filters['year_to'] %><li><%= link_to "To: #{@filters['year_to']} ×", search_url('year_to' => nil, 'page' => nil), 'aria-label' => "Remove end year filter: #{@filters['year_to']}" %></li><% end %>
+            <% if @filters['collection'] %><li><%= link_to "Collection: #{@filters['collection']} ×", search_url('collection' => nil, 'page' => nil), 'aria-label' => "Remove collection filter: #{@filters['collection']}" %></li><% end %>
+            <% if @filters['item'] %>
+              <% item_result = Array(@results).find { |result| result['item_id'] == @filters['item'] } %>
+              <% item_label = item_result ? item_result['title'] : @filters['item'] %>
+              <li><%= link_to "Item: #{item_label} ×", search_url('item' => nil, 'page' => nil, 'per_page' => nil), 'aria-label' => "Remove item filter: #{item_label}" %></li>
+            <% end %>
+          </ul>
+          <%= link_to 'Clear all', search_url('series' => nil, 'year_from' => nil, 'year_to' => nil, 'collection' => nil, 'item' => nil, 'sort' => 'relevance', 'page' => nil, 'per_page' => nil), class: 'ocr-clear-filters' %>
+        </section>
+        <% end %>
+
         <nav aria-label="Filter by publication">
           <h3>Publication</h3>
           <ul class="ocr-filter-list">
@@ -76,21 +94,6 @@
           </ul>
         </nav>
 
-        <section class="ocr-active-filters" aria-labelledby="ocr-active-filters-heading">
-          <h3 id="ocr-active-filters-heading">Active filters</h3>
-          <ul class="ocr-chip-list">
-            <% if @filters['series'] %><li><%= link_to "Publication: #{@filters['series']} ×", search_url('series' => nil, 'page' => nil), 'aria-label' => "Remove Publication filter: #{@filters['series']}" %></li><% end %>
-            <% if @filters['year_from'] %><li><%= link_to "From: #{@filters['year_from']} ×", search_url('year_from' => nil, 'page' => nil), 'aria-label' => "Remove start year filter: #{@filters['year_from']}" %></li><% end %>
-            <% if @filters['year_to'] %><li><%= link_to "To: #{@filters['year_to']} ×", search_url('year_to' => nil, 'page' => nil), 'aria-label' => "Remove end year filter: #{@filters['year_to']}" %></li><% end %>
-            <% if @filters['collection'] %><li><%= link_to "Collection: #{@filters['collection']} ×", search_url('collection' => nil, 'page' => nil), 'aria-label' => "Remove collection filter: #{@filters['collection']}" %></li><% end %>
-            <% if @filters['item'] %>
-              <% item_result = Array(@results).find { |result| result['item_id'] == @filters['item'] } %>
-              <% item_label = item_result ? item_result['title'] : @filters['item'] %>
-              <li><%= link_to "Item: #{item_label} ×", search_url('item' => nil, 'page' => nil, 'per_page' => nil), 'aria-label' => "Remove item filter: #{item_label}" %></li>
-            <% end %>
-          </ul>
-          <%= link_to 'Clear all', search_url('series' => nil, 'year_from' => nil, 'year_to' => nil, 'collection' => nil, 'item' => nil, 'sort' => 'relevance', 'page' => nil, 'per_page' => nil), class: 'ocr-clear-filters' %>
-        </section>
       </aside>
 
       <main id="ocr-results" class="ocr-results" aria-label="Search results">
@@ -112,11 +115,12 @@
               <section class="ocr-page-excerpt" aria-label="Matching page <%= h(page['page_number']) %>">
                 <h4><%= link_to "View #{page['page_label'] || "page #{page['page_number']}"}", item_page_url(result['item_id'], page['canvas_id']) %></h4>
                 <% Array(page['snippets']).first(2).each do |snippet| %>
-                  <p class="ocr-excerpt">…<%= sanitize(snippet['html'], tags: ['mark'], attributes: []) %>…</p>
+                  <p class="ocr-excerpt">…<%= sanitize(trim_trailing_excerpt_periods(snippet['html']), tags: ['mark'], attributes: []) %>…</p>
                 <% end %>
               </section>
             <% end %>
-            <p><%= link_to "See all #{result['matching_pages']} matching pages", search_url('item' => result['item_id'], 'per_page' => '25', 'page' => nil), class: 'ocr-view-link' %></p>
+            <% page_link_label = result['matching_pages'].to_i == 1 ? 'See the matching page' : "See all #{result['matching_pages']} matching pages" %>
+            <p><%= link_to page_link_label, search_url('item' => result['item_id'], 'per_page' => '25', 'page' => nil), class: 'ocr-view-link' %></p>
           </article>
         <% end %>
 

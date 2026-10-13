@@ -6,7 +6,8 @@ require_relative '../../lib/search_client'
 class OcrSearchController < ApplicationController
   ITEM_ID = /\A[a-z0-9-]{1,64}\z/.freeze
 
-  helper_method :search_url, :item_path_url, :item_page_url, :page_url, :page_match
+  helper_method :search_url, :item_path_url, :item_page_url, :page_url, :page_match,
+                :trim_trailing_excerpt_periods
 
   def index
     @page_title = 'Search digitized newspapers'
@@ -170,6 +171,14 @@ class OcrSearchController < ApplicationController
 
   def page_match(canvas_id)
     @matching_pages.find { |page| page['canvas_id'] == canvas_id }
+  end
+
+  def trim_trailing_excerpt_periods(html)
+    excerpt = html.to_s.dup
+    loop do
+      break unless excerpt.sub!(/\.+(?=(?:<\/mark>)*\z)/, '')
+    end
+    excerpt
   end
 
   def page_url(page, pages_page: @pages_page, missed: nil)

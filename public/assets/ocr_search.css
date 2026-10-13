@@ -25,7 +25,8 @@
 .ocr-year-form legend{font-weight:700;margin-bottom:8px}
 .ocr-year-form button{margin-top:12px}
 .ocr-sort{border-top:1px solid #d5dee4;margin-top:22px}
-.ocr-active-filters{border-top:1px solid #d5dee4;margin-top:22px;padding-top:2px}
+.ocr-active-filters{border-bottom:1px solid #d5dee4;margin:0 0 18px;padding:0 0 14px}
+.ocr-active-filters h3{margin-top:0}
 .ocr-chip-list{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
 .ocr-chip-list a{display:inline-block;border:1px solid #9eafba;border-radius:16px;background:#fff;padding:5px 10px;text-decoration:none}
 .ocr-clear-filters{display:inline-block;margin:4px 0;font-weight:600}

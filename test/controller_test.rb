@@ -70,7 +70,9 @@ class OcrSearchControllerTest < Minitest::Test
   end
 
   def test_filters_chips_sort_and_grouped_results_render_from_v2_response
-    api = FakeAPI.new(search: Response.new('200', JSON.generate(search_payload)))
+    payload = search_payload
+    payload['results'][0]['pages'][0]['snippets'][0]['html'] = 'A <mark>mascot</mark> appears....'
+    api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)))
 
     with_api(api) do
       controller = OcrSearchController.new(
@@ -90,11 +92,17 @@ class OcrSearchControllerTest < Minitest::Test
       assert_includes html, 'aria-label="Remove Publication filter: Example Weekly"'
       assert_includes html, 'aria-label="Remove start year filter: 1920"'
       assert_includes html, 'Clear all'
+      active_filters_position = html.index('<section class="ocr-active-filters"')
+      clear_all_position = html.index('>Clear all</a>')
+      publication_filter_position = html.index('<nav aria-label="Filter by publication">')
+      assert_operator active_filters_position, :<, publication_filter_position
+      assert_operator clear_all_position, :<, publication_filter_position
       assert_includes html, 'Newest first'
       assert_includes html, '2 matching items'
       assert_includes html, '3 matching pages'
       assert_equal 2, html.scan('class="ocr-result"').length
-      assert_includes html, 'A <mark>mascot</mark> appears.'
+      assert_includes html, '…A <mark>mascot</mark> appears…'
+      refute_includes html, 'appears.…'
       assert_includes html, 'See all 2 matching pages'
       assert_includes html, '<nav aria-label="Filter by publication">'
       assert_includes html, '<nav aria-label="Filter by decade">'
@@ -104,6 +112,41 @@ class OcrSearchControllerTest < Minitest::Test
       assert_includes html, 'href="/digital-text?q=mascot&amp;sort=relevance" class="ocr-clear-filters"'
       refute_match(/ocr-result-count[^>]*aria-live/, html)
       refute_includes html, 'Search within'
+    end
+  end
+
+  def test_active_filter_summary_is_omitted_when_no_filters_are_set
+    payload = search_payload
+    payload['filters'] = {'series' => nil, 'year_from' => nil, 'year_to' => nil,
+                          'collection' => nil, 'item' => nil}
+    api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)))
+
+    with_api(api) do
+      controller = OcrSearchController.new(q: 'dance')
+      controller.index
+      html = controller.render_view('index')
+
+      refute_includes html, '<section class="ocr-active-filters"'
+      refute_includes html, 'Clear all'
+    end
+  end
+
+  def test_single_matching_page_uses_singular_view_link_wording
+    payload = search_payload
+    payload['total_items'] = 1
+    payload['matching_pages'] = 1
+    payload['results'] = [payload['results'].first]
+    payload['results'][0]['matching_pages'] = 1
+    payload['results'][0]['pages'] = [payload['results'][0]['pages'].first]
+    api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)))
+
+    with_api(api) do
+      controller = OcrSearchController.new(q: 'mascot')
+      controller.index
+      html = controller.render_view('index')
+
+      assert_includes html, 'See the matching page'
+      refute_includes html, 'See all 1 matching pages'
     end
   end
 
@@ -176,6 +219,7 @@ class OcrSearchControllerTest < Minitest::Test
       ]
     }
     payload = item_search_payload('demo-c', details['pages'].first['canvas_id'])
+    payload['results'][0]['pages'][0]['snippets'][0]['html'] = 'A <mark>mascot</mark> appears on the first page....'
     api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)), item: Response.new('200', JSON.generate(details)))
 
     with_api(api) do
@@ -190,7 +234,8 @@ class OcrSearchControllerTest < Minitest::Test
       assert_includes html, 'Page 1 of 2'
       assert_includes html, 'Page 2 ›'
       assert_includes html, 'Back to page list'
-      assert_includes html, 'A <mark>mascot</mark> appears on the first page.'
+      assert_includes html, '…A <mark>mascot</mark> appears on the first page…'
+      refute_includes html, 'first page.…'
       assert_includes html, 'View in the finding aid'
       assert_includes html, 'https://example.org/records/demo-c'
       refute_includes html, 'data-dv-source-group'
@@ -431,7 +476,7 @@ class OcrSearchControllerTest < Minitest::Test
     matches = item_search_payload('demo-c', catalog_page['canvas'])
     matches['results'][0]['item_id'] = item_id
     matches['results'][0]['pages'][0]['canvas_id'] = catalog_page['canvas']
-    matches['results'][0]['pages'][0]['snippets'][0]['html'] = 'Synthetic <mark>highlight</mark>.'
+    matches['results'][0]['pages'][0]['snippets'][0]['html'] = 'Synthetic <mark>highlight</mark>....'
     api = FakeAPI.new(search: Response.new('200', JSON.generate(matches)), item: Response.new('200', JSON.generate(details)))
 
     with_api(api) do
@@ -443,7 +488,8 @@ class OcrSearchControllerTest < Minitest::Test
       assert_includes html, 'data-ocr-highlights='
       assert_includes html, 'data-ocr-next'
       assert_includes html, 'Previous match'
-      assert_includes html, 'Synthetic <mark>highlight</mark>.'
+      assert_includes html, '…Synthetic <mark>highlight</mark>…'
+      refute_includes html, 'highlight</mark>.…'
     end
   end
 
