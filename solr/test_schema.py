@@ -57,10 +57,7 @@ class SchemaV2Tests(unittest.TestCase):
         for analyzer in field_type.findall('analyzer'):
             filters = [node.get('class') for node in analyzer.findall('filter')]
             with self.subTest(analyzer=analyzer.get('type')):
-                self.assertEqual([
-                    'solr.LowerCaseFilterFactory',
-                    'solr.KStemFilterFactory'
-                ], filters)
+                self.assertEqual(['solr.LowerCaseFilterFactory', 'solr.KStemFilterFactory'], filters)
 
     def test_string_field_type_sorts_missing_values_last(self):
         string_type = self.root.find("./fieldType[@name='string']")

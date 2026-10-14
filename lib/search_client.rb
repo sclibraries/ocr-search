@@ -2,6 +2,7 @@ require 'net/http'
 require 'uri'
 
 module OcrPilot
+  # Builds and executes requests to the OCR search API.
   module SearchClient
     SEARCH_PARAMETERS = %w[q series year_from year_to collection item sort page per_page].freeze
     ITEM_PARAMETERS = %w[pages_page pages_per_page page_number canvas].freeze
@@ -13,6 +14,7 @@ module OcrPilot
         name = key.to_s
         next unless SEARCH_PARAMETERS.include?(name)
         next if value.nil? || value.to_s.empty?
+
         result[name] = value.to_s
       end
       uri.query = URI.encode_www_form(query)
@@ -21,13 +23,16 @@ module OcrPilot
 
     def self.item_uri(endpoint, id, parameters = {})
       raise ArgumentError, 'Invalid item identifier' unless ITEM_ID.match?(id.to_s)
+
       uri = search_endpoint(endpoint)
       raise IOError, 'Search endpoint must end in /search' unless uri.path.match?(%r{/search\z})
+
       uri.path = uri.path.sub(/search\z/, "items/#{id}")
       query = parameters.each_with_object({}) do |(key, value), result|
         name = key.to_s
         next unless ITEM_PARAMETERS.include?(name)
         next if value.nil? || value.to_s.empty?
+
         result[name] = value.to_s
       end
       uri.query = query.empty? ? nil : URI.encode_www_form(query)
@@ -45,6 +50,7 @@ module OcrPilot
     def self.search_endpoint(endpoint)
       uri = URI(endpoint)
       raise IOError, 'Search endpoint is not configured' unless %w[http https].include?(uri.scheme) && uri.host
+
       uri
     end
     private_class_method :search_endpoint

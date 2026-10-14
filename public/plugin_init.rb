@@ -1,12 +1,12 @@
 require_relative 'asset_versions'
 
 Rails.application.config.after_initialize do
-  I18n.backend.store_translations(:en, ocr_search: {navigation: 'Newspaper text'})
-  $MAIN_MENU.push(['/digital-text', 'ocr_search.navigation'])
+  I18n.backend.store_translations(:en, ocr_search: { navigation: 'Newspaper text' })
+  $MAIN_MENU.push(['/digital-text', 'ocr_search.navigation']) # rubocop:disable Style/GlobalVars -- ArchivesSpace hook.
 
   Rails.application.routes.prepend do
     scope AppConfig[:public_proxy_prefix] do
-      get '/digital-text/manifests/:item/:number', to: 'ocr_search#manifest', defaults: {format: 'json'}
+      get '/digital-text/manifests/:item/:number', to: 'ocr_search#manifest', defaults: { format: 'json' }
       get '/digital-text', to: 'ocr_search#index'
       get '/digital-text/items/:item', to: 'ocr_search#show'
     end

@@ -1,4 +1,5 @@
 """Tests for OCR core discovery before the Solr precreate helper runs."""
+
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINT = ROOT / 'solr' / 'ocr-entrypoint.sh'
 FAKE_PROGRAMS = ROOT / 'solr' / 'test_fakes'
 
+
 def write_core_files(data_dir, core_files):
     for relative_path, contents in (core_files or {}).items():
         core_properties = data_dir / relative_path
@@ -19,7 +21,13 @@ def write_core_files(data_dir, core_files):
 
 
 def build_call_environment(
-    data_dir, curl_args_path, solr_args_path, curl_status, curl_response, solr_delay, env,
+    data_dir,
+    curl_args_path,
+    solr_args_path,
+    curl_status,
+    curl_response,
+    solr_delay,
+    env,
 ):
     call_env = {
         **os.environ,
@@ -39,8 +47,13 @@ def build_call_environment(
 def run_entrypoint_function(function, args, call_env):
     return subprocess.run(
         [
-            'bash', '-c', 'source "$1"; shift; "$@"',
-            'call-entrypoint', str(ENTRYPOINT), function, *args,
+            'bash',
+            '-c',
+            'source "$1"; shift; "$@"',
+            'call-entrypoint',
+            str(ENTRYPOINT),
+            function,
+            *args,
         ],
         capture_output=True,
         text=True,
@@ -79,8 +92,13 @@ def call_entrypoint(
         curl_args_path = directory / 'curl-args.jsonl'
         solr_args_path = directory / 'solr-args.json'
         call_env = build_call_environment(
-            data_dir, curl_args_path, solr_args_path, curl_status,
-            curl_response, solr_delay, env,
+            data_dir,
+            curl_args_path,
+            solr_args_path,
+            curl_status,
+            curl_response,
+            solr_delay,
+            env,
         )
         result = run_entrypoint_function(function, args, call_env)
         return result, read_json(solr_args_path), read_json_lines(curl_args_path)
@@ -103,7 +121,8 @@ class CoreDefinitionTest(unittest.TestCase):
 
     def test_named_core_is_found_below_a_different_directory(self):
         result, _, _ = call_entrypoint(
-            'refuse_duplicate_definitions', 'ocr',
+            'refuse_duplicate_definitions',
+            'ocr',
             core_files={'ocr_build/core.properties': 'name=ocr\n'},
         )
 
@@ -112,7 +131,8 @@ class CoreDefinitionTest(unittest.TestCase):
 
     def test_implicit_core_name_uses_its_instance_directory(self):
         result, _, _ = call_entrypoint(
-            'refuse_duplicate_definitions', 'ocr',
+            'refuse_duplicate_definitions',
+            'ocr',
             core_files={'ocr/core.properties': ''},
         )
 
@@ -121,7 +141,8 @@ class CoreDefinitionTest(unittest.TestCase):
 
     def test_duplicate_names_are_rejected_with_a_diagnostic(self):
         result, _, _ = call_entrypoint(
-            'refuse_duplicate_definitions', 'ocr',
+            'refuse_duplicate_definitions',
+            'ocr',
             core_files={
                 'ocr_build/core.properties': 'name=ocr\n',
                 'rollback/ocr/core.properties': 'name=ocr\n',
@@ -135,19 +156,23 @@ class CoreDefinitionTest(unittest.TestCase):
 class MainEntrypointTest(unittest.TestCase):
     def test_empty_data_directory_passes_live_core_creation_through(self):
         result, solr_args, curl_calls = call_entrypoint(
-            'main', 'solr-precreate', 'ocr', '/opt/ocr-config', solr_delay=0.2,
+            'main',
+            'solr-precreate',
+            'ocr',
+            '/opt/ocr-config',
+            solr_delay=0.2,
         )
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(['solr-precreate', 'ocr', '/opt/ocr-config'], solr_args)
-        self.assertTrue(any(
-            'http://127.0.0.1:8983/solr/ocr/admin/ping' in call
-            for call in curl_calls
-        ))
+        self.assertTrue(any('http://127.0.0.1:8983/solr/ocr/admin/ping' in call for call in curl_calls))
 
     def test_existing_live_core_uses_foreground_start(self):
         result, solr_args, _ = call_entrypoint(
-            'main', 'solr-precreate', 'ocr', '/opt/ocr-config',
+            'main',
+            'solr-precreate',
+            'ocr',
+            '/opt/ocr-config',
             core_files={'ocr_build/core.properties': 'name=ocr\n'},
             solr_delay=0.2,
         )
@@ -157,7 +182,10 @@ class MainEntrypointTest(unittest.TestCase):
 
     def test_two_live_core_definitions_fail_before_start(self):
         result, solr_args, _ = call_entrypoint(
-            'main', 'solr-precreate', 'ocr', '/opt/ocr-config',
+            'main',
+            'solr-precreate',
+            'ocr',
+            '/opt/ocr-config',
             core_files={
                 'ocr_build/core.properties': 'name=ocr\n',
                 'rollback/ocr/core.properties': 'name=ocr\n',
@@ -170,7 +198,10 @@ class MainEntrypointTest(unittest.TestCase):
 
     def test_non_live_core_creation_passes_through_unchanged(self):
         result, solr_args, curl_calls = call_entrypoint(
-            'main', 'solr-precreate', 'ocr_build', '/opt/ocr-config',
+            'main',
+            'solr-precreate',
+            'ocr_build',
+            '/opt/ocr-config',
         )
 
         self.assertEqual(0, result.returncode, result.stderr)
@@ -179,7 +210,10 @@ class MainEntrypointTest(unittest.TestCase):
 
     def test_live_core_startup_timeout_returns_failure(self):
         result, _, _ = call_entrypoint(
-            'main', 'solr-precreate', 'ocr', '/opt/ocr-config',
+            'main',
+            'solr-precreate',
+            'ocr',
+            '/opt/ocr-config',
             curl_status=22,
             env={'OCR_SOLR_STARTUP_TIMEOUT': '1'},
             solr_delay=5,
@@ -190,7 +224,8 @@ class MainEntrypointTest(unittest.TestCase):
 
     def test_named_init_failure_is_reported(self):
         result, _, _ = call_entrypoint(
-            'live_core_has_init_failure', 'ocr',
+            'live_core_has_init_failure',
+            'ocr',
             curl_response='{"initFailures":{"ocr":"bad config"}}',
         )
 
@@ -198,7 +233,8 @@ class MainEntrypointTest(unittest.TestCase):
 
     def test_empty_init_failures_are_not_reported(self):
         result, _, _ = call_entrypoint(
-            'live_core_has_init_failure', 'ocr',
+            'live_core_has_init_failure',
+            'ocr',
             curl_response='{"initFailures":{}}',
         )
 

@@ -1,4 +1,5 @@
 """Read-only sources. S3 access is one bounded GET per file, with no LIST or writes."""
+
 from pathlib import Path
 from .catalog import s3_location
 
@@ -35,7 +36,7 @@ class S3Source:
 
     def read(self, row, limit):
         bucket, key = s3_location(row['uri'])
-        params = dict(Bucket=bucket, Key=key, Range=f'bytes=0-{limit-1}')
+        params = dict(Bucket=bucket, Key=key, Range=f'bytes=0-{limit - 1}')
         if row.get('version_id'):
             params['VersionId'] = row['version_id']
         self.requests += 1
@@ -57,7 +58,10 @@ class S3Source:
                 self.bytes_read += len(chunk)
                 chunks.append(chunk)
             data = b''.join(chunks)
-            return data, {'version_id': response.get('VersionId'), 'etag': response.get('ETag'),
-                          'last_modified': str(response.get('LastModified', ''))}
+            return data, {
+                'version_id': response.get('VersionId'),
+                'etag': response.get('ETag'),
+                'last_modified': str(response.get('LastModified', '')),
+            }
         finally:
             body.close()

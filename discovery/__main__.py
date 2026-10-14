@@ -1,4 +1,5 @@
 """Usage: python3 -m discovery --help"""
+
 import argparse
 from collections import Counter
 import csv
@@ -7,8 +8,13 @@ import os
 from pathlib import Path
 from .catalog import Catalog
 from .export import sample_sql
-from .inventory import (build_inventory, read_access_mapping, read_export,
-                        read_manifest_metadata_labels, write_inventory)
+from .inventory import (
+    build_inventory,
+    read_access_mapping,
+    read_export,
+    read_manifest_metadata_labels,
+    write_inventory,
+)
 from .manifests import fetch_manifests
 from .runner import audit
 from .sources import LocalSource, S3Source
@@ -16,10 +22,24 @@ from .sources import LocalSource, S3Source
 
 def reports(catalog, output, run):
     rows = catalog.report()
-    (output / 'report.json').write_text(json.dumps({'run': run, 'rows': rows}, indent=2)+'\n')
-    fields = ['file_id', 'filename', 'uri', 'status', 'sha256', 'bytes', 'word_count',
-              'page_ids', 'item_ids', 'canvas_id', 'aspace_record', 'issues', 'error', 'public_index_approved',
-              'skipped_blank_words']
+    (output / 'report.json').write_text(json.dumps({'run': run, 'rows': rows}, indent=2) + '\n')
+    fields = [
+        'file_id',
+        'filename',
+        'uri',
+        'status',
+        'sha256',
+        'bytes',
+        'word_count',
+        'page_ids',
+        'item_ids',
+        'canvas_id',
+        'aspace_record',
+        'issues',
+        'error',
+        'public_index_approved',
+        'skipped_blank_words',
+    ]
     with (output / 'report.csv').open('w', newline='') as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
@@ -29,16 +49,22 @@ def reports(catalog, output, run):
                 if isinstance(value, str) and value.startswith(('=', '+', '-', '@', '\t', '\r')):
                     safe[key] = "'" + value
             writer.writerow(safe)
-    summary = dict(run, inventory_files=len(rows), statuses=dict(Counter(row['status'] for row in rows)),
-                   issues=dict(Counter(issue for row in rows for issue in row['issues'])),
-                   public_index_approved=0, coverage='bounded supplied inventory; not a full collection audit')
-    (output / 'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    summary = dict(
+        run,
+        inventory_files=len(rows),
+        statuses=dict(Counter(row['status'] for row in rows)),
+        issues=dict(Counter(issue for row in rows for issue in row['issues'])),
+        public_index_approved=0,
+        coverage='bounded supplied inventory; not a full collection audit',
+    )
+    (output / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(json.dumps(summary, indent=2))
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Bounded OCR discovery, relationship export, and page-inventory reconciliation.')
+        description='Bounded OCR discovery, relationship export, and page-inventory reconciliation.'
+    )
     commands = parser.add_subparsers(dest='command', required=True)
     sql = commands.add_parser('export-sql', help='Print a bounded SELECT; does not connect to a database')
     sql.add_argument('--collection-id', type=int, required=True)
@@ -58,12 +84,22 @@ def main():
     inventory.add_argument('--export-jsonl', required=True, type=Path)
     inventory.add_argument('--evidence-file', type=Path)
     inventory.add_argument('--manifest-dir', type=Path, help='Optional converted IIIF manifests')
-    inventory.add_argument('--compass-manifest-dir', type=Path,
-                           help='Private output directory from discovery manifests')
-    inventory.add_argument('--manifest-metadata-labels-file', type=Path,
-                           help='JSON mapping series and issue_date to lists of IIIF metadata labels')
-    inventory.add_argument('--access-mapping-file', required=True, type=Path,
-                           help='Reviewed schema-version 1 access mapping JSON')
+    inventory.add_argument(
+        '--compass-manifest-dir',
+        type=Path,
+        help='Private output directory from discovery manifests',
+    )
+    inventory.add_argument(
+        '--manifest-metadata-labels-file',
+        type=Path,
+        help='JSON mapping series and issue_date to lists of IIIF metadata labels',
+    )
+    inventory.add_argument(
+        '--access-mapping-file',
+        required=True,
+        type=Path,
+        help='Reviewed schema-version 1 access mapping JSON',
+    )
     inventory.add_argument('--source-bucket', default=os.environ.get('OCR_SOURCE_BUCKET'))
     inventory.add_argument('--output-location', default=os.environ.get('OCR_INVENTORY_OUTPUT'))
     inventory.add_argument('--profile', help='Named AWS credential profile; never pass keys on the command line')
@@ -74,8 +110,16 @@ def main():
     run.add_argument('--output', required=True, type=Path)
     sources = run.add_mutually_exclusive_group()
     sources.add_argument('--local-source', type=Path)
-    sources.add_argument('--read-s3', action='store_true', help='Explicitly enable bounded GETs; requires boto3 and configured read credentials')
-    run.add_argument('--retry-errors', action='store_true', help='Explicitly retry previously checkpointed read failures')
+    sources.add_argument(
+        '--read-s3',
+        action='store_true',
+        help='Explicitly enable bounded GETs; requires boto3 and configured read credentials',
+    )
+    run.add_argument(
+        '--retry-errors',
+        action='store_true',
+        help='Explicitly retry previously checkpointed read failures',
+    )
     run.add_argument('--profile', help='Named AWS credential profile; never pass keys on the command line')
     run.add_argument('--max-files', type=int, default=100)
     run.add_argument('--max-bytes', type=int, default=50_000_000)
@@ -86,9 +130,15 @@ def main():
     args = parser.parse_args()
     if args.command == 'export-sql':
         try:
-            query = sample_sql(args.collection_id, args.hocr_media_use_id,
-                               args.after_file_id, args.limit,
-                               args.after_page_id, args.after_item_id, args.explain)
+            query = sample_sql(
+                args.collection_id,
+                args.hocr_media_use_id,
+                args.after_file_id,
+                args.limit,
+                args.after_page_id,
+                args.after_item_id,
+                args.explain,
+            )
         except ValueError as error:
             parser.error(str(error))
         print(query)
@@ -96,13 +146,24 @@ def main():
     if args.command == 'manifests':
         try:
             rows = read_export(args.export_jsonl)
-            entries = fetch_manifests(rows, args.output_dir, args.base_url,
-                                      requests_per_second=args.requests_per_second,
-                                      timeout=args.timeout)
+            entries = fetch_manifests(
+                rows,
+                args.output_dir,
+                args.base_url,
+                requests_per_second=args.requests_per_second,
+                timeout=args.timeout,
+            )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             parser.error(str(error))
-        print(json.dumps({'manifest_count': len(entries),
-                          'index': str(args.output_dir / 'manifest-index.jsonl')}, indent=2))
+        print(
+            json.dumps(
+                {
+                    'manifest_count': len(entries),
+                    'index': str(args.output_dir / 'manifest-index.jsonl'),
+                },
+                indent=2,
+            )
+        )
         return
     if args.command == 'inventory':
         if not args.source_bucket:
@@ -115,20 +176,28 @@ def main():
             rows = read_export(args.export_jsonl)
             evidence = json.loads(args.evidence_file.read_text()) if args.evidence_file else None
             access_mapping = read_access_mapping(args.access_mapping_file)
-            metadata_labels = (read_manifest_metadata_labels(args.manifest_metadata_labels_file)
-                               if args.manifest_metadata_labels_file else None)
+            metadata_labels = (
+                read_manifest_metadata_labels(args.manifest_metadata_labels_file)
+                if args.manifest_metadata_labels_file
+                else None
+            )
             import boto3
             from botocore.config import Config
+
             session = boto3.Session(profile_name=args.profile, region_name=args.region)
-            config = Config(connect_timeout=5, read_timeout=5,
-                            retries={'total_max_attempts': 1})
+            config = Config(connect_timeout=5, read_timeout=5, retries={'total_max_attempts': 1})
             s3 = session.client('s3', config=config)
-            result = build_inventory(rows, evidence, args.manifest_dir, s3,
-                                     source_bucket=args.source_bucket,
-                                     access_mapping=access_mapping,
-                                     compass_manifest_directory=args.compass_manifest_dir,
-                                     sample_size=args.canvas_sample_size,
-                                     manifest_metadata_labels=metadata_labels)
+            result = build_inventory(
+                rows,
+                evidence,
+                args.manifest_dir,
+                s3,
+                source_bucket=args.source_bucket,
+                access_mapping=access_mapping,
+                compass_manifest_directory=args.compass_manifest_dir,
+                sample_size=args.canvas_sample_size,
+                manifest_metadata_labels=metadata_labels,
+            )
             locations = write_inventory(result, args.output_location, s3)
         except (OSError, ValueError, json.JSONDecodeError) as error:
             parser.error(str(error))
@@ -149,6 +218,7 @@ def main():
         elif args.read_s3:
             import boto3
             from botocore.config import Config
+
             session = boto3.Session(profile_name=args.profile, region_name='us-east-1')
             config = Config(connect_timeout=5, read_timeout=5, retries={'total_max_attempts': 1})
             source = S3Source(session.client('s3', config=config))
@@ -156,8 +226,16 @@ def main():
         if source:
             if args.retry_errors:
                 catalog.retry_errors()
-            result = audit(catalog, source, args.max_files, args.max_bytes, args.max_file_bytes,
-                           args.max_seconds, args.max_requests, args.delay)
+            result = audit(
+                catalog,
+                source,
+                args.max_files,
+                args.max_bytes,
+                args.max_file_bytes,
+                args.max_seconds,
+                args.max_requests,
+                args.delay,
+            )
         reports(catalog, args.output, result)
     finally:
         catalog.close()

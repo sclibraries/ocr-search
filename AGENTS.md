@@ -15,7 +15,17 @@ here only.
 
 From the repository root:
 
+Install `uv` first, then install the pinned linter dependencies once:
+
 ```sh
+uv sync
+BUNDLE_GEMFILE=tools/rubocop/Gemfile bundle install
+```
+
+```sh
+uv run ruff check indexer/ discovery/ solr/
+uv run ruff format --check indexer/ discovery/ solr/
+BUNDLE_GEMFILE=tools/rubocop/Gemfile bundle exec rubocop lib/ public/ test/
 ruby test/catalog_test.rb
 ruby test/search_client_test.rb
 ruby test/controller_test.rb
@@ -25,10 +35,19 @@ python3 -m unittest discover -s indexer -p 'test_stream.py'
 python3 -m unittest discovery.test_discovery
 python3 -m unittest discover -s discovery -p 'test_inventory.py'
 python3 -m unittest discover -s discovery -p 'test_manifests.py'
+python3 -m unittest discover -s solr -p 'test_*.py'
 ```
 
 `indexer/test_http.py` and the browser test need a running search API, Solr and ArchivesSpace;
 they skip without them. See the README for the environment variables.
+
+## Code standards
+
+- Apply DRY and SOLID, with one responsibility per module, class and function.
+- Keep functions lean: complexity about 10, Python statements at most 40, and Ruby methods at
+  most 25 lines.
+- Keep Ruff and RuboCop clear; track genuine refactors for follow-up instead of suppressing rules.
+- Keep the plugin root free of `Gemfile` and `gems/`: ArchivesSpace treats them as runtime dependencies during startup.
 
 ## Interfaces other systems depend on
 

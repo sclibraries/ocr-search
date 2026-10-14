@@ -112,28 +112,32 @@ def _canonical_row_hash(digest, row):
 
 def _inventory_identity(location, s3_client, corpus_id, db, inventory_version_id=None):
     db.execute('DROP TABLE IF EXISTS temp.ocr010_input')
-    db.execute('''CREATE TEMP TABLE ocr010_input (
+    db.execute("""CREATE TEMP TABLE ocr010_input (
         row_number INTEGER PRIMARY KEY,
         page_id TEXT NOT NULL UNIQUE,
         access TEXT NOT NULL,
         withdrawn INTEGER NOT NULL
-    )''')
+    )""")
     digest = hashlib.sha256()
     row_number = 0
-    for line_number, raw_line in enumerate(
-            _inventory_lines(location, s3_client, inventory_version_id), 1):
+    for line_number, raw_line in enumerate(_inventory_lines(location, s3_client, inventory_version_id), 1):
         if isinstance(raw_line, str):
             raw_line = raw_line.encode('utf-8')
         row = _parse_row(raw_line, line_number, corpus_id)
         if row is None:
             continue
         row_number += 1
-        _canonical_row_hash(digest, {key: value for key, value in row.items()
-                                    if not key.startswith('_stream_')})
+        _canonical_row_hash(digest, {key: value for key, value in row.items() if not key.startswith('_stream_')})
         try:
             db.execute(
                 'INSERT INTO temp.ocr010_input(row_number,page_id,access,withdrawn) VALUES(?,?,?,?)',
-                (row_number, row['_stream_page_id'], row['_stream_access'], int(row['_stream_withdrawn'])))
+                (
+                    row_number,
+                    row['_stream_page_id'],
+                    row['_stream_access'],
+                    int(row['_stream_withdrawn']),
+                ),
+            )
         except sqlite3.IntegrityError as error:
             raise ValueError(f'inventory contains a duplicate page identity at line {line_number}') from error
     if row_number == 0:
@@ -157,26 +161,26 @@ class RunJournal:
         os.chmod(self.path, 0o600)
         self.db.row_factory = sqlite3.Row
         self.db.execute('PRAGMA foreign_keys=ON')
-        self.db.execute('''CREATE TABLE IF NOT EXISTS ocr010_meta (
+        self.db.execute("""CREATE TABLE IF NOT EXISTS ocr010_meta (
             name TEXT PRIMARY KEY, value TEXT NOT NULL
-        )''')
-        self.db.execute('''CREATE TABLE IF NOT EXISTS ocr010_pages (
+        )""")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS ocr010_pages (
             row_number INTEGER PRIMARY KEY,
             page_id TEXT NOT NULL UNIQUE,
             access TEXT NOT NULL,
             withdrawn INTEGER NOT NULL,
             status TEXT,
             error TEXT
-        )''')
-        self.db.execute('''CREATE TABLE IF NOT EXISTS ocr010_withdrawn (
+        )""")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS ocr010_withdrawn (
             page_id TEXT PRIMARY KEY
-        )''')
+        )""")
         self.db.commit()
 
         existing = self.meta()
         if not existing:
-            self.db.execute('''INSERT INTO ocr010_pages(row_number,page_id,access,withdrawn)
-                SELECT row_number,page_id,access,withdrawn FROM temp.ocr010_input''')
+            self.db.execute("""INSERT INTO ocr010_pages(row_number,page_id,access,withdrawn)
+                SELECT row_number,page_id,access,withdrawn FROM temp.ocr010_input""")
             values = {
                 'schema_version': '1',
                 'corpus_id': corpus_id,
@@ -201,54 +205,58 @@ class RunJournal:
                 if existing.get(key) != value:
                     self.close()
                     raise ValueError(f'journal {key} differs; use a new journal for a changed run')
-            mismatch = self.db.execute('''SELECT COUNT(*) FROM temp.ocr010_input i
+            mismatch = self.db.execute("""SELECT COUNT(*) FROM temp.ocr010_input i
                 LEFT JOIN ocr010_pages p USING(row_number)
                 WHERE p.page_id IS NULL OR p.page_id != i.page_id
-                   OR p.access != i.access OR p.withdrawn != i.withdrawn''').fetchone()[0]
+                   OR p.access != i.access OR p.withdrawn != i.withdrawn""").fetchone()[0]
             if mismatch:
                 self.close()
                 raise ValueError('journal page rows do not match the inventory; use a new journal')
 
     def meta(self):
-        return {row['name']: row['value'] for row in
-                self.db.execute('SELECT name,value FROM ocr010_meta')}
+        return {row['name']: row['value'] for row in self.db.execute('SELECT name,value FROM ocr010_meta')}
 
     def set_meta(self, **values):
-        self.db.executemany('INSERT INTO ocr010_meta(name,value) VALUES(?,?) '
-                            'ON CONFLICT(name) DO UPDATE SET value=excluded.value',
-                            ((key, str(value)) for key, value in values.items()))
+        self.db.executemany(
+            'INSERT INTO ocr010_meta(name,value) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET value=excluded.value',
+            ((key, str(value)) for key, value in values.items()),
+        )
         self.db.commit()
 
     def page_status(self, row_number):
-        row = self.db.execute('SELECT status FROM ocr010_pages WHERE row_number=?',
-                              (row_number,)).fetchone()
+        row = self.db.execute('SELECT status FROM ocr010_pages WHERE row_number=?', (row_number,)).fetchone()
         return row['status'] if row else None
 
     def save_statuses(self, updates):
         with self.db:
-            self.db.executemany('UPDATE ocr010_pages SET status=?, error=? WHERE row_number=?',
-                                ((status, error[:500] if error else None, row_number)
-                                 for row_number, status, error in updates))
+            self.db.executemany(
+                'UPDATE ocr010_pages SET status=?, error=? WHERE row_number=?',
+                ((status, error[:500] if error else None, row_number) for row_number, status, error in updates),
+            )
 
     def indexed(self, page_id):
-        row = self.db.execute('SELECT status FROM ocr010_pages WHERE page_id=?',
-                              (page_id,)).fetchone()
+        row = self.db.execute('SELECT status FROM ocr010_pages WHERE page_id=?', (page_id,)).fetchone()
         return bool(row and row['status'] == 'indexed')
 
     def page_for_id(self, page_id):
-        return self.db.execute('SELECT status,withdrawn FROM ocr010_pages WHERE page_id=?',
-                               (page_id,)).fetchone()
+        return self.db.execute('SELECT status,withdrawn FROM ocr010_pages WHERE page_id=?', (page_id,)).fetchone()
 
     def record_withdrawn(self, page_ids):
         with self.db:
-            self.db.executemany('INSERT OR IGNORE INTO ocr010_withdrawn(page_id) VALUES(?)',
-                                ((page_id,) for page_id in page_ids))
+            self.db.executemany(
+                'INSERT OR IGNORE INTO ocr010_withdrawn(page_id) VALUES(?)',
+                ((page_id,) for page_id in page_ids),
+            )
 
     def counts(self):
-        counts = {row['status']: row['n'] for row in self.db.execute(
-            'SELECT status,COUNT(*) AS n FROM ocr010_pages GROUP BY status') if row['status']}
-        counts['withdrawn'] = counts.get('withdrawn', 0) + self.db.execute(
-            'SELECT COUNT(*) FROM ocr010_withdrawn').fetchone()[0]
+        counts = {
+            row['status']: row['n']
+            for row in self.db.execute('SELECT status,COUNT(*) AS n FROM ocr010_pages GROUP BY status')
+            if row['status']
+        }
+        counts['withdrawn'] = (
+            counts.get('withdrawn', 0) + self.db.execute('SELECT COUNT(*) FROM ocr010_withdrawn').fetchone()[0]
+        )
         counts['indexed'] = counts.get('indexed', 0)
         counts['skipped'] = counts.get('skipped', 0)
         counts['failed'] = counts.get('failed', 0)
@@ -265,20 +273,28 @@ class SolrClient:
     def __init__(self, base_url, timeout=30):
         parsed = urlsplit(str(base_url))
         core_path = parsed.path.strip('/').split('/')
-        if (parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.username
-                or parsed.password or parsed.query or parsed.fragment):
+        if (
+            parsed.scheme not in {'http', 'https'}
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
             raise ValueError('Solr URL must be an HTTP(S) core URL without credentials or query')
-        if len(core_path) != 2 or core_path[0] != 'solr' or not re.fullmatch(
-                r'[A-Za-z0-9_.-]+', core_path[1]):
+        if len(core_path) != 2 or core_path[0] != 'solr' or not re.fullmatch(r'[A-Za-z0-9_.-]+', core_path[1]):
             raise ValueError('Solr URL must identify one /solr/<core> endpoint')
         self.base_url = str(base_url).rstrip('/')
         self.timeout = timeout
 
     def _request(self, path, payload=None):
         data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode('utf-8')
-        request = Request(self.base_url + path, data=data,
-                          headers={'Content-Type': 'application/json'} if data is not None else {},
-                          method='POST' if data is not None else 'GET')
+        request = Request(
+            self.base_url + path,
+            data=data,
+            headers={'Content-Type': 'application/json'} if data is not None else {},
+            method='POST' if data is not None else 'GET',
+        )
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 result = json.load(response)
@@ -299,14 +315,16 @@ class SolrClient:
             self._request('/update?commit=true', {'delete': [{'id': page_id} for page_id in page_ids]})
 
     def list_ids(self, corpus_id, cursor_mark='*', rows=DEFAULT_SOLR_PAGE_SIZE):
-        params = urlencode({
-            'q': f'corpus_id:"{corpus_id}"',
-            'fl': 'id',
-            'rows': rows,
-            'sort': 'id asc',
-            'cursorMark': cursor_mark,
-            'wt': 'json',
-        })
+        params = urlencode(
+            {
+                'q': f'corpus_id:"{corpus_id}"',
+                'fl': 'id',
+                'rows': rows,
+                'sort': 'id asc',
+                'cursorMark': cursor_mark,
+                'wt': 'json',
+            }
+        )
         result = self._request('/select?' + params)
         response = result.get('response', {})
         ids = [doc['id'] for doc in response.get('docs', []) if doc.get('id')]
@@ -329,12 +347,23 @@ def _retryable(error):
         return True
     if status in {408, 429, 500, 502, 503, 504}:
         return True
-    if code in {'SlowDown', 'RequestTimeout', 'RequestTimeoutException',
-                'InternalError', 'ServiceUnavailable', 'Throttling'}:
+    if code in {
+        'SlowDown',
+        'RequestTimeout',
+        'RequestTimeoutException',
+        'InternalError',
+        'ServiceUnavailable',
+        'Throttling',
+    }:
         return True
     return type(error).__name__ in {
-        'EndpointConnectionError', 'ConnectionClosedError', 'ConnectTimeoutError',
-        'ReadTimeoutError', 'TimeoutError', 'ConnectionError', 'OSError',
+        'EndpointConnectionError',
+        'ConnectionClosedError',
+        'ConnectTimeoutError',
+        'ReadTimeoutError',
+        'TimeoutError',
+        'ConnectionError',
+        'OSError',
     }
 
 
@@ -345,7 +374,7 @@ def _retry(operation, retries, backoff_seconds, sleep_fn):
         except Exception as error:
             if attempt >= retries or not _retryable(error):
                 raise
-            sleep_fn(backoff_seconds * (2 ** attempt))
+            sleep_fn(backoff_seconds * (2**attempt))
 
 
 def _read_hocr(s3_client, row, retries, backoff_seconds, sleep_fn, max_page_bytes):
@@ -407,10 +436,8 @@ def validate_streamed_hocr(data):
         root = ET.fromstring(data)
     except ET.ParseError as error:
         raise StreamIndexError('hOCR is not well-formed XML') from error
-    pages = [element for element in root.iter()
-             if 'ocr_page' in element.get('class', '').split()]
-    words = [element for element in root.iter()
-             if set(element.get('class', '').split()) & {'ocrx_word', 'ocr_word'}]
+    pages = [element for element in root.iter() if 'ocr_page' in element.get('class', '').split()]
+    words = [element for element in root.iter() if set(element.get('class', '').split()) & {'ocrx_word', 'ocr_word'}]
     if len(pages) != 1 or not words or not any(''.join(word.itertext()).strip() for word in words):
         raise StreamIndexError('expected one nonempty hOCR page')
     page_box = _BBOX.search(pages[0].get('title', ''))
@@ -424,8 +451,7 @@ def validate_streamed_hocr(data):
         if not match:
             raise StreamIndexError('hOCR word has no bbox')
         left, top, right, bottom = map(int, match.groups())
-        if not (page_left <= left <= right <= page_right
-                and page_top <= top <= bottom <= page_bottom):
+        if not (page_left <= left <= right <= page_right and page_top <= top <= bottom <= page_bottom):
             raise StreamIndexError('hOCR word bbox is outside its page')
     try:
         return data.decode('utf-8')
@@ -510,8 +536,7 @@ def _build_document(row, corpus_id, source_sha256, hocr):
         'source_etag': _optional_text(row.get('s3_etag')),
         'source_sha256': _optional_text(source_sha256),
     }
-    document.update({key: value for key, value in optional_fields.items()
-                     if value is not None and value != ''})
+    document.update({key: value for key, value in optional_fields.items() if value is not None and value != ''})
     return document
 
 
@@ -519,8 +544,19 @@ def _error_text(error):
     return (str(error).strip() or type(error).__name__)[:500]
 
 
-def _process_rows(rows, journal, s3_client, solr_client, corpus_id, batch_size,
-                  retries, backoff_seconds, sleep_fn, max_page_bytes, dry_run):
+def _process_rows(
+    rows,
+    journal,
+    s3_client,
+    solr_client,
+    corpus_id,
+    batch_size,
+    retries,
+    backoff_seconds,
+    sleep_fn,
+    max_page_bytes,
+    dry_run,
+):
     statuses = []
     documents = []
     deletions = []
@@ -533,8 +569,7 @@ def _process_rows(rows, journal, s3_client, solr_client, corpus_id, batch_size,
             deletions.append((row_number, page_id, 'skipped'))
             continue
         try:
-            data, sha256 = _read_hocr(s3_client, row, retries, backoff_seconds,
-                                      sleep_fn, max_page_bytes)
+            data, sha256 = _read_hocr(s3_client, row, retries, backoff_seconds, sleep_fn, max_page_bytes)
             hocr = validate_streamed_hocr(data)
             document = _build_document(row, corpus_id, sha256, hocr)
             if dry_run:
@@ -550,49 +585,63 @@ def _process_rows(rows, journal, s3_client, solr_client, corpus_id, batch_size,
         return
 
     for start in range(0, len(deletions), batch_size):
-        deletion_batch = deletions[start:start + batch_size]
+        deletion_batch = deletions[start : start + batch_size]
         if deletion_batch:
             page_ids = [entry[1] for entry in deletion_batch]
             try:
-                _retry(lambda: solr_client.delete_ids(page_ids), retries, backoff_seconds, sleep_fn)
-                statuses.extend((row_number, status, None)
-                                for row_number, _, status in deletion_batch)
+                _retry(
+                    lambda page_ids=page_ids: solr_client.delete_ids(page_ids),
+                    retries,
+                    backoff_seconds,
+                    sleep_fn,
+                )
+                statuses.extend((row_number, status, None) for row_number, _, status in deletion_batch)
             except Exception as error:
                 failure = _error_text(error)
-                statuses.extend((row_number, 'failed', failure)
-                                for row_number, _, _ in deletion_batch)
+                statuses.extend((row_number, 'failed', failure) for row_number, _, _ in deletion_batch)
 
     for start in range(0, len(documents), batch_size):
-        document_batch = documents[start:start + batch_size]
+        document_batch = documents[start : start + batch_size]
         if document_batch:
             try:
-                _retry(lambda: solr_client.add_documents([entry[1] for entry in document_batch]),
-                       retries, backoff_seconds, sleep_fn)
-                statuses.extend((row_number, 'indexed', None)
-                                for row_number, _ in document_batch)
+                _retry(
+                    lambda document_batch=document_batch: solr_client.add_documents(
+                        [entry[1] for entry in document_batch]
+                    ),
+                    retries,
+                    backoff_seconds,
+                    sleep_fn,
+                )
+                statuses.extend((row_number, 'indexed', None) for row_number, _ in document_batch)
             except Exception as error:
                 failure = _error_text(error)
-                statuses.extend((row_number, 'failed', failure)
-                                for row_number, _ in document_batch)
+                statuses.extend((row_number, 'failed', failure) for row_number, _ in document_batch)
 
     journal.save_statuses(statuses)
 
 
-def _reconcile_solr(journal, solr_client, corpus_id, batch_size, retries,
-                    backoff_seconds, sleep_fn):
+def _reconcile_solr(journal, solr_client, corpus_id, batch_size, retries, backoff_seconds, sleep_fn):
     meta = journal.meta()
     if meta.get('reconcile_complete') == '1':
         return True
     cursor = meta.get('reconcile_cursor', '*')
     while True:
         try:
-            ids, next_cursor = _retry(lambda: solr_client.list_ids(corpus_id, cursor),
-                                      retries, backoff_seconds, sleep_fn)
+            ids, next_cursor = _retry(
+                lambda cursor=cursor: solr_client.list_ids(corpus_id, cursor),
+                retries,
+                backoff_seconds,
+                sleep_fn,
+            )
             stale = [page_id for page_id in ids if not journal.indexed(page_id)]
             for start in range(0, len(stale), batch_size):
-                page_ids = stale[start:start + batch_size]
-                _retry(lambda: solr_client.delete_ids(page_ids), retries,
-                       backoff_seconds, sleep_fn)
+                page_ids = stale[start : start + batch_size]
+                _retry(
+                    lambda page_ids=page_ids: solr_client.delete_ids(page_ids),
+                    retries,
+                    backoff_seconds,
+                    sleep_fn,
+                )
                 withdrawn = []
                 for page_id in page_ids:
                     if journal.page_for_id(page_id) is None:
@@ -609,10 +658,21 @@ def _reconcile_solr(journal, solr_client, corpus_id, batch_size, retries,
         cursor = next_cursor
 
 
-def index_inventory(inventory, s3_client, solr_client, journal_path, corpus_id,
-                    batch_size=DEFAULT_BATCH_SIZE, retries=3, backoff_seconds=0.5,
-                    max_page_bytes=DEFAULT_MAX_PAGE_BYTES, dry_run=False,
-                    retry_failed=False, inventory_version_id=None, sleep_fn=time.sleep):
+def index_inventory(
+    inventory,
+    s3_client,
+    solr_client,
+    journal_path,
+    corpus_id,
+    batch_size=DEFAULT_BATCH_SIZE,
+    retries=3,
+    backoff_seconds=0.5,
+    max_page_bytes=DEFAULT_MAX_PAGE_BYTES,
+    dry_run=False,
+    retry_failed=False,
+    inventory_version_id=None,
+    sleep_fn=time.sleep,
+):
     """Validate and stream one inventory to Solr without creating local OCR files.
 
     The journal contains page IDs and statuses only. Reusing it requires the same
@@ -649,27 +709,27 @@ def index_inventory(inventory, s3_client, solr_client, journal_path, corpus_id,
             os.umask(previous_umask)
         os.chmod(journal_file, 0o600)
         temp_db.row_factory = sqlite3.Row
-        temp_db.execute('''CREATE TABLE IF NOT EXISTS ocr010_meta (
+        temp_db.execute("""CREATE TABLE IF NOT EXISTS ocr010_meta (
             name TEXT PRIMARY KEY, value TEXT NOT NULL
-        )''')
-        temp_db.execute('''CREATE TABLE IF NOT EXISTS ocr010_pages (
+        )""")
+        temp_db.execute("""CREATE TABLE IF NOT EXISTS ocr010_pages (
             row_number INTEGER PRIMARY KEY, page_id TEXT NOT NULL UNIQUE,
             access TEXT NOT NULL, withdrawn INTEGER NOT NULL, status TEXT, error TEXT
-        )''')
-        temp_db.execute('''CREATE TABLE IF NOT EXISTS ocr010_withdrawn (
+        )""")
+        temp_db.execute("""CREATE TABLE IF NOT EXISTS ocr010_withdrawn (
             page_id TEXT PRIMARY KEY
-        )''')
+        )""")
         temp_db.commit()
         inventory_sha256, page_count = _inventory_identity(
-            inventory, s3_client, corpus_id, temp_db, inventory_version_id)
+            inventory, s3_client, corpus_id, temp_db, inventory_version_id
+        )
         journal = RunJournal(journal_path, corpus_id, inventory_sha256, page_count, dry_run, temp_db)
         temp_db = None
         journal.db.execute('DROP TABLE IF EXISTS temp.ocr010_input')
 
         pending = []
         row_number = 0
-        for line_number, raw_line in enumerate(
-                _inventory_lines(inventory, s3_client, inventory_version_id), 1):
+        for line_number, raw_line in enumerate(_inventory_lines(inventory, s3_client, inventory_version_id), 1):
             if isinstance(raw_line, str):
                 raw_line = raw_line.encode('utf-8')
             row = _parse_row(raw_line, line_number, corpus_id)
@@ -681,32 +741,53 @@ def index_inventory(inventory, s3_client, solr_client, journal_path, corpus_id,
                 continue
             pending.append((row_number, row))
             if len(pending) >= batch_size:
-                _process_rows(pending, journal, s3_client, solr_client, corpus_id,
-                              batch_size, retries, backoff_seconds, sleep_fn,
-                              max_page_bytes, dry_run)
+                _process_rows(
+                    pending,
+                    journal,
+                    s3_client,
+                    solr_client,
+                    corpus_id,
+                    batch_size,
+                    retries,
+                    backoff_seconds,
+                    sleep_fn,
+                    max_page_bytes,
+                    dry_run,
+                )
                 pending = []
         if pending:
-            _process_rows(pending, journal, s3_client, solr_client, corpus_id,
-                          batch_size, retries, backoff_seconds, sleep_fn,
-                          max_page_bytes, dry_run)
+            _process_rows(
+                pending,
+                journal,
+                s3_client,
+                solr_client,
+                corpus_id,
+                batch_size,
+                retries,
+                backoff_seconds,
+                sleep_fn,
+                max_page_bytes,
+                dry_run,
+            )
 
-        unresolved = journal.db.execute(
-            'SELECT COUNT(*) FROM ocr010_pages WHERE status IS NULL').fetchone()[0]
+        unresolved = journal.db.execute('SELECT COUNT(*) FROM ocr010_pages WHERE status IS NULL').fetchone()[0]
         journal.set_meta(source_complete='1' if unresolved == 0 else '0')
         reconcile_complete = True
         if not dry_run:
-            reconcile_complete = _reconcile_solr(journal, solr_client, corpus_id,
-                                                  batch_size, retries, backoff_seconds,
-                                                  sleep_fn)
+            reconcile_complete = _reconcile_solr(
+                journal, solr_client, corpus_id, batch_size, retries, backoff_seconds, sleep_fn
+            )
         counts = journal.counts()
-        counts.update({
-            'corpus_id': corpus_id,
-            'inventory_sha256': inventory_sha256,
-            'total_pages': page_count,
-            'dry_run': bool(dry_run),
-            'complete': unresolved == 0 and reconcile_complete,
-            'journal': str(Path(journal_path)),
-        })
+        counts.update(
+            {
+                'corpus_id': corpus_id,
+                'inventory_sha256': inventory_sha256,
+                'total_pages': page_count,
+                'dry_run': bool(dry_run),
+                'complete': unresolved == 0 and reconcile_complete,
+                'journal': str(Path(journal_path)),
+            }
+        )
         return counts
     finally:
         if journal:
@@ -717,11 +798,14 @@ def index_inventory(inventory, s3_client, solr_client, journal_path, corpus_id,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Stream versioned public hOCR pages from S3 to Solr.')
-    parser.add_argument('--inventory', required=True,
-                        help='local JSONL path or s3://bucket/key page inventory')
+    parser.add_argument('--inventory', required=True, help='local JSONL path or s3://bucket/key page inventory')
     parser.add_argument('--inventory-version-id', help='pin an S3-hosted inventory version')
-    parser.add_argument('--journal', required=True, type=Path,
-                        help='private SQLite run journal; contains page IDs/statuses, never OCR')
+    parser.add_argument(
+        '--journal',
+        required=True,
+        type=Path,
+        help='private SQLite run journal; contains page IDs/statuses, never OCR',
+    )
     parser.add_argument('--corpus', required=True, help='explicit corpus identifier')
     parser.add_argument('--solr-url', help='explicit Solr core URL; required except for --dry-run')
     parser.add_argument('--profile', help='named AWS profile; credentials are never command-line arguments')
@@ -730,10 +814,16 @@ def main(argv=None):
     parser.add_argument('--retries', type=int, default=3)
     parser.add_argument('--backoff-seconds', type=float, default=0.5)
     parser.add_argument('--max-page-bytes', type=int, default=DEFAULT_MAX_PAGE_BYTES)
-    parser.add_argument('--retry-failed', action='store_true',
-                        help='retry pages marked failed in an otherwise matching journal')
-    parser.add_argument('--dry-run', action='store_true',
-                        help='verify public inventory pages and S3 objects without Solr calls')
+    parser.add_argument(
+        '--retry-failed',
+        action='store_true',
+        help='retry pages marked failed in an otherwise matching journal',
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='verify public inventory pages and S3 objects without Solr calls',
+    )
     args = parser.parse_args(argv)
     if not args.dry_run and not args.solr_url:
         parser.error('--solr-url is required unless --dry-run is set')
@@ -744,15 +834,25 @@ def main(argv=None):
         from botocore.config import Config
 
         session = boto3.Session(profile_name=args.profile, region_name=args.region)
-        s3 = session.client('s3', config=Config(connect_timeout=5, read_timeout=30,
-                                                retries={'total_max_attempts': 1}))
+        s3 = session.client(
+            's3',
+            config=Config(connect_timeout=5, read_timeout=30, retries={'total_max_attempts': 1}),
+        )
         solr = SolrClient(args.solr_url) if args.solr_url else None
         result = index_inventory(
-            args.inventory, s3, solr, args.journal, args.corpus,
-            batch_size=args.batch_size, retries=args.retries,
-            backoff_seconds=args.backoff_seconds, max_page_bytes=args.max_page_bytes,
-            dry_run=args.dry_run, retry_failed=args.retry_failed,
-            inventory_version_id=args.inventory_version_id)
+            args.inventory,
+            s3,
+            solr,
+            args.journal,
+            args.corpus,
+            batch_size=args.batch_size,
+            retries=args.retries,
+            backoff_seconds=args.backoff_seconds,
+            max_page_bytes=args.max_page_bytes,
+            dry_run=args.dry_run,
+            retry_failed=args.retry_failed,
+            inventory_version_id=args.inventory_version_id,
+        )
     except (OSError, ValueError, StreamIndexError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, sort_keys=True))

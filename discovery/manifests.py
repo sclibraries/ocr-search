@@ -17,8 +17,14 @@ MAX_MANIFEST_BYTES = 25_000_000
 
 def _manifest_url(base_url, item_id):
     parsed = urlsplit(base_url)
-    if (parsed.scheme != 'https' or not parsed.netloc or parsed.username or parsed.password
-            or parsed.query or parsed.fragment):
+    if (
+        parsed.scheme != 'https'
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
         raise ValueError('Compass manifest base URL must be an HTTPS origin without credentials or query')
     return f'{base_url.rstrip("/")}/node/{quote(str(item_id), safe="")}/manifest'
 
@@ -127,8 +133,15 @@ def _store_manifest(directory, item_id, body):
     return filename
 
 
-def fetch_manifests(export_rows, output_dir, base_url, requests_per_second=1.0,
-                    fetcher=None, sleep_fn=time.sleep, timeout=10):
+def fetch_manifests(
+    export_rows,
+    output_dir,
+    base_url,
+    requests_per_second=1.0,
+    fetcher=None,
+    sleep_fn=time.sleep,
+    timeout=10,
+):
     """Fetch missing item manifests, save mode-0600 files, and resume from the index.
 
     ``fetcher`` is an injection point for deterministic offline tests. The default

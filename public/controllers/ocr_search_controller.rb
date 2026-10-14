@@ -3,6 +3,7 @@ require 'uri'
 require_relative '../../lib/catalog'
 require_relative '../../lib/search_client'
 
+# Renders the OCR search, item, and page views.
 class OcrSearchController < ApplicationController
   ITEM_ID = /\A[a-z0-9-]{1,64}\z/.freeze
 
@@ -18,7 +19,7 @@ class OcrSearchController < ApplicationController
     @sort = params[:sort].to_s.empty? ? 'relevance' : params[:sort].to_s
     @page_number = params.fetch(:page, '1').to_s
     @per_page = 10
-    @facets = {'series' => [], 'decade' => []}
+    @facets = { 'series' => [], 'decade' => [] }
     @results = nil
     raise ArgumentError unless @page_number.match?(/\A[0-9]+\z/) && (1..200).cover?(@page_number.to_i)
     raise ArgumentError unless @item_id.empty? || ITEM_ID.match?(@item_id)
@@ -40,6 +41,7 @@ class OcrSearchController < ApplicationController
     facets = data.fetch('facets', @facets)
     results = data.fetch('results')
     raise IOError unless facets.is_a?(Hash) && results.is_a?(Array)
+
     @facets = facets
     @results = results
   rescue ArgumentError
@@ -56,7 +58,7 @@ class OcrSearchController < ApplicationController
   def manifest
     render json: OcrPilot::Catalog.manifest(params[:item].to_s, params[:number].to_s)
   rescue KeyError
-    render json: {error: 'Page unavailable'}, status: :not_found
+    render json: { error: 'Page unavailable' }, status: :not_found
   end
 
   def show
@@ -83,6 +85,7 @@ class OcrSearchController < ApplicationController
     raise KeyError unless ITEM_ID.match?(@item_id)
     raise ArgumentError unless @query.length <= 200
     raise ArgumentError unless @requested_page_number.empty? || requested_page_number
+
     @requested_page_number = requested_page_number.to_s if requested_page_number
 
     response = OcrPilot::SearchClient.get_item(
@@ -90,14 +93,17 @@ class OcrSearchController < ApplicationController
     )
     unless response.code == '200'
       return render(:show, status: :not_found) if response.code == '404'
+
       @error = error_message(response.code)
       return
     end
 
     @item = JSON.parse(response.body)
     raise IOError unless @item.fetch('item_id') == @item_id
+
     @pages = @item.fetch('pages')
     raise IOError unless @pages.is_a?(Array)
+
     @page_count = Integer(@item.fetch('page_count'))
     @pages_per_page = Integer(@item.fetch('pages_per_page', 50))
     @pages_page = Integer(@item.fetch('pages_page', params.fetch(:pages_page, '1')))
@@ -111,21 +117,24 @@ class OcrSearchController < ApplicationController
                   end
       raise IOError unless jump_page
       return redirect_to(page_url(jump_page, missed: @requested_page_number)) if @jump_missed
+
       return redirect_to(page_url(jump_page))
     end
     @selected = @item['selected']
     if @selected
       raise IOError unless @selected.is_a?(Hash) && @selected['canvas_id']
+
       @selected_page = @pages.find { |page| page['canvas_id'] == @selected['canvas_id'] }
       raise IOError unless @selected_page
     end
     raise KeyError if !params[:canvas].to_s.empty? && !@selected_page
+
     @page_title = @item.fetch('title', 'Search digitized newspapers')
     @catalog_page = catalog_page_for(@item_id, @selected_page) if @selected_page
-    @highlight_data = {snippets: []}
+    @highlight_data = { snippets: [] }
     load_item_matches unless @query.empty?
     match = page_match(@selected_page['canvas_id']) if @selected_page
-    @highlight_data = {snippets: match ? Array(match['snippets']) : [], partial: @partial} if @selected_page
+    @highlight_data = { snippets: match ? Array(match['snippets']) : [], partial: @partial } if @selected_page
   rescue KeyError
     @item = nil
     @selected_page = nil
@@ -152,12 +161,13 @@ class OcrSearchController < ApplicationController
     state.delete_if { |_key, value| value.nil? || value.to_s.empty? }
     query_string = URI.encode_www_form(state)
     path = helpers.app_prefix('/digital-text')
-    query_string.empty? ? path : path + '?' + query_string
+    query_string.empty? ? path : "#{path}?#{query_string}"
   end
 
   def item_path_url(item_id)
     raise ArgumentError, 'Invalid item identifier' unless ITEM_ID.match?(item_id.to_s)
-    helpers.app_prefix('/digital-text/items/' + item_id.to_s)
+
+    helpers.app_prefix("/digital-text/items/#{item_id}")
   end
 
   def item_page_url(item_id, canvas_id = nil, changes = {})
@@ -166,7 +176,7 @@ class OcrSearchController < ApplicationController
     query.merge!(changes)
     path = item_path_url(item_id)
     query.delete_if { |_key, value| value.nil? || value.to_s.empty? }
-    query.empty? ? path : path + '?' + URI.encode_www_form(query)
+    query.empty? ? path : "#{path}?#{URI.encode_www_form(query)}"
   end
 
   def page_match(canvas_id)
@@ -176,13 +186,13 @@ class OcrSearchController < ApplicationController
   def trim_trailing_excerpt_periods(html)
     excerpt = html.to_s.dup
     loop do
-      break unless excerpt.sub!(/\.+(?=(?:<\/mark>)*\z)/, '')
+      break unless excerpt.sub!(%r{\.+(?=(?:</mark>)*\z)}, '')
     end
     excerpt
   end
 
   def page_url(page, pages_page: @pages_page, missed: nil)
-    changes = {'pages_page' => pages_page}
+    changes = { 'pages_page' => pages_page }
     changes['missed'] = missed unless missed.nil?
     item_page_url(@item_id, page['canvas_id'], changes)
   end
@@ -207,7 +217,7 @@ class OcrSearchController < ApplicationController
   end
 
   def search_parameters
-    parameters = {'q' => @query, 'sort' => @sort, 'page' => @page_number}
+    parameters = { 'q' => @query, 'sort' => @sort, 'page' => @page_number }
     @filters.each { |key, value| parameters[key] = value unless value.nil? }
     per_page = params[:per_page].to_s
     parameters['per_page'] = per_page unless per_page.empty?
@@ -215,7 +225,7 @@ class OcrSearchController < ApplicationController
   end
 
   def item_page_parameters
-    parameters = {'pages_per_page' => '50'}
+    parameters = { 'pages_per_page' => '50' }
     if !params[:canvas].to_s.empty?
       parameters['canvas'] = params[:canvas].to_s
     elsif !params[:page_number].to_s.empty?
@@ -227,7 +237,7 @@ class OcrSearchController < ApplicationController
   end
 
   def item_context_query
-    query = {'q' => @query}
+    query = { 'q' => @query }
     %w[series year_from year_to collection].each do |key|
       query[key] = @filters[key] if @filters && @filters[key]
     end
@@ -240,6 +250,7 @@ class OcrSearchController < ApplicationController
 
   def accept_response(response)
     return true if response.code == '200'
+
     @error = error_message(response.code)
     false
   end
@@ -274,6 +285,7 @@ class OcrSearchController < ApplicationController
 
   def catalog_page_for(item_id, selected_page)
     return nil unless OcrPilot::Catalog::DATA.key?(item_id)
+
     OcrPilot::Catalog.page(item_id, selected_page['canvas_id'])
   rescue KeyError
     nil
@@ -281,16 +293,16 @@ class OcrSearchController < ApplicationController
 
   def load_item_matches
     response = OcrPilot::SearchClient.get(ENV.fetch('OCR_SEARCH_API_URL', ''), {
-      'q' => @query,
-      'item' => @item_id,
-      'sort' => params[:sort].to_s.empty? ? 'relevance' : params[:sort].to_s,
-      'page' => params.fetch(:page, '1').to_s,
-      'per_page' => '25',
-      'series' => nonblank(params[:series]),
-      'year_from' => nonblank(params[:year_from]),
-      'year_to' => nonblank(params[:year_to]),
-      'collection' => nonblank(params[:collection])
-    })
+                                            'q' => @query,
+                                            'item' => @item_id,
+                                            'sort' => params[:sort].to_s.empty? ? 'relevance' : params[:sort].to_s,
+                                            'page' => params.fetch(:page, '1').to_s,
+                                            'per_page' => '25',
+                                            'series' => nonblank(params[:series]),
+                                            'year_from' => nonblank(params[:year_from]),
+                                            'year_to' => nonblank(params[:year_to]),
+                                            'collection' => nonblank(params[:collection])
+                                          })
     unless response.code == '200'
       @error = error_message(response.code)
       return

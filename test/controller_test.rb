@@ -10,7 +10,7 @@ require_relative '../public/asset_versions'
 
 class OcrSearchControllerTest < Minitest::Test
   Response = Struct.new(:code, :body)
-  API = 'http://fake-api.test/api/ocr/search'
+  API = 'http://fake-api.test/api/ocr/search'.freeze
 
   def test_view_context_exposes_declared_helpers_but_not_controller_actions
     controller = OcrSearchController.new(q: 'mascot')
@@ -82,9 +82,9 @@ class OcrSearchControllerTest < Minitest::Test
       html = controller.render_view('index')
 
       assert_equal({
-        'q' => 'mascot', 'series' => 'Example Weekly', 'year_from' => '1920',
-        'year_to' => '1929', 'sort' => 'date_desc', 'page' => '1'
-      }, api.search_requests.fetch(0).fetch(:params))
+                     'q' => 'mascot', 'series' => 'Example Weekly', 'year_from' => '1920',
+                     'year_to' => '1929', 'sort' => 'date_desc', 'page' => '1'
+                   }, api.search_requests.fetch(0).fetch(:params))
       assert_includes html, 'Publication'
       assert_includes html, 'Date'
       assert_includes html, 'Example Weekly (2 items)'
@@ -107,7 +107,7 @@ class OcrSearchControllerTest < Minitest::Test
       assert_includes html, '<nav aria-label="Filter by publication">'
       assert_includes html, '<nav aria-label="Filter by decade">'
       assert_includes html, '<legend>Filter by year range</legend>'
-      assert_match(/Newest first<\/a>\s*<\/li>/m, html)
+      assert_match(%r{Newest first</a>\s*</li>}m, html)
       assert_match(/aria-current="true">Newest first/m, html)
       assert_includes html, 'href="/digital-text?q=mascot&amp;sort=relevance" class="ocr-clear-filters"'
       refute_match(/ocr-result-count[^>]*aria-live/, html)
@@ -117,8 +117,8 @@ class OcrSearchControllerTest < Minitest::Test
 
   def test_active_filter_summary_is_omitted_when_no_filters_are_set
     payload = search_payload
-    payload['filters'] = {'series' => nil, 'year_from' => nil, 'year_to' => nil,
-                          'collection' => nil, 'item' => nil}
+    payload['filters'] = { 'series' => nil, 'year_from' => nil, 'year_to' => nil,
+                           'collection' => nil, 'item' => nil }
     api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)))
 
     with_api(api) do
@@ -181,7 +181,7 @@ class OcrSearchControllerTest < Minitest::Test
     payload['results'][0]['pages'] = (1..4).map do |number|
       page = page_payload('demo-a', number)
       page['snippets'] = 3.times.map do |index|
-        {'html' => "Synthetic excerpt #{index + 1}.", 'pages' => [], 'regions' => [], 'highlights' => []}
+        { 'html' => "Synthetic excerpt #{index + 1}.", 'pages' => [], 'regions' => [], 'highlights' => [] }
       end
       page
     end
@@ -209,25 +209,26 @@ class OcrSearchControllerTest < Minitest::Test
       'source_manifest_url' => 'https://example.org/manifests/demo-c',
       'page_count' => 2, 'truncated' => false, 'pages_page' => 1,
       'pages_per_page' => 50, 'pages_total_pages' => 1,
-      'selected' => {'position' => 1, 'page_number' => 1, 'page_label' => 'Page 1',
-                     'canvas_id' => 'https://example.org/canvas/demo-c/1', 'previous' => nil,
-                     'next' => {'page_number' => 2, 'page_label' => 'Page 2',
-                                'canvas_id' => 'https://example.org/canvas/demo-c/2'}},
+      'selected' => { 'position' => 1, 'page_number' => 1, 'page_label' => 'Page 1',
+                      'canvas_id' => 'https://example.org/canvas/demo-c/1', 'previous' => nil,
+                      'next' => { 'page_number' => 2, 'page_label' => 'Page 2',
+                                  'canvas_id' => 'https://example.org/canvas/demo-c/2' } },
       'pages' => [
-        {'page_number' => 1, 'page_label' => 'Page 1', 'canvas_id' => 'https://example.org/canvas/demo-c/1'},
-        {'page_number' => 2, 'page_label' => 'Page 2', 'canvas_id' => 'https://example.org/canvas/demo-c/2'}
+        { 'page_number' => 1, 'page_label' => 'Page 1', 'canvas_id' => 'https://example.org/canvas/demo-c/1' },
+        { 'page_number' => 2, 'page_label' => 'Page 2', 'canvas_id' => 'https://example.org/canvas/demo-c/2' }
       ]
     }
     payload = item_search_payload('demo-c', details['pages'].first['canvas_id'])
     payload['results'][0]['pages'][0]['snippets'][0]['html'] = 'A <mark>mascot</mark> appears on the first page....'
-    api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)), item: Response.new('200', JSON.generate(details)))
+    api = FakeAPI.new(search: Response.new('200', JSON.generate(payload)),
+                      item: Response.new('200', JSON.generate(details)))
 
     with_api(api) do
       controller = OcrSearchController.new(item: 'demo-c', canvas: details['pages'].first['canvas_id'], q: 'mascot')
       controller.show
       html = controller.render_view('show')
 
-      assert_equal ['demo-c'], api.item_requests.map { |request| request.fetch(:id) }
+      assert_equal ['demo-c'], (api.item_requests.map { |request| request.fetch(:id) })
       assert_equal 'demo-c', api.search_requests.fetch(0).fetch(:params)['item']
       assert_includes html, 'Synthetic issue C'
       assert_includes html, 'Example Review'
@@ -246,8 +247,8 @@ class OcrSearchControllerTest < Minitest::Test
   def test_long_item_renders_only_the_requested_first_middle_or_last_50_page_slice
     api = synthetic_long_item_api
 
-    {'1' => 'Pages 1–50 of 1200', '12' => 'Pages 551–600 of 1200',
-     '24' => 'Pages 1151–1200 of 1200'}.each do |pages_page, range|
+    { '1' => 'Pages 1–50 of 1200', '12' => 'Pages 551–600 of 1200',
+      '24' => 'Pages 1151–1200 of 1200' }.each do |pages_page, range|
       with_api(api) do
         controller = OcrSearchController.new(
           item: 'demo-long', pages_page: pages_page,
@@ -257,21 +258,21 @@ class OcrSearchControllerTest < Minitest::Test
         html = controller.render_view('show')
         request = api.item_requests.last
 
-        assert_equal({'pages_page' => pages_page, 'pages_per_page' => '50'}, request.fetch(:params))
+        assert_equal({ 'pages_page' => pages_page, 'pages_per_page' => '50' }, request.fetch(:params))
         assert_includes html, range
         assert_operator html.scan(/<li><a /).length, :<=, 50
         assert_operator html.scan(/<a\b/).length, :<=, 100
         assert_includes html, 'aria-label="Pages in this item"'
         refute_includes html, 'first 1,000 pages'
         if pages_page == '1'
-          refute_match(/<a[^>]*>‹ Previous<\/a>/, html)
+          refute_match(%r{<a[^>]*>‹ Previous</a>}, html)
         elsif pages_page == '24'
-          refute_match(/<a[^>]*>Next ›<\/a>/, html)
+          refute_match(%r{<a[^>]*>Next ›</a>}, html)
         end
         assert_internal_links_keep_state(html, {
-          'q' => 'mascot', 'series' => 'Example Weekly', 'year_from' => '1920',
-          'collection' => '/repositories/2/resources/1'
-        })
+                                           'q' => 'mascot', 'series' => 'Example Weekly', 'year_from' => '1920',
+                                           'collection' => '/repositories/2/resources/1'
+                                         })
       end
     end
   end
@@ -284,8 +285,12 @@ class OcrSearchControllerTest < Minitest::Test
       controller.show
       html = controller.render_view('show')
 
-      assert_match(/<a href="[^"]+" aria-label="Sophian, Volume 51, Number 14, Page 1" title="Sophian, Volume 51, Number 14, Page 1">1<\/a>/, html)
-      assert_match(/<a href="[^"]+" aria-label="Page 2" title="Page 2">2<\/a>/, html)
+      page_one_link = [
+        '<a href="[^"]+" aria-label="Sophian, Volume 51, Number 14, Page 1" ',
+        'title="Sophian, Volume 51, Number 14, Page 1">1</a>'
+      ].join
+      assert_match(Regexp.new(page_one_link), html)
+      assert_match(%r{<a href="[^"]+" aria-label="Page 2" title="Page 2">2</a>}, html)
       refute_includes html, '>Sophian, Volume 51, Number 14, Page 1</a>'
     end
   end
@@ -293,11 +298,11 @@ class OcrSearchControllerTest < Minitest::Test
   def test_page_number_jumps_redirect_from_item_and_page_views_to_selected_page
     api = synthetic_long_item_api
     [
-      [{item: 'demo-long', page_number: '1150', q: 'mascot', series: 'Example Weekly',
-        year_from: '1920', year_to: '1929', collection: '/repositories/2/resources/1',
-        sort: 'date_desc', page: '3'}, '1150', nil],
-      [{item: 'demo-long', page_number: '571', q: 'mascot'}, '572', nil],
-      [{item: 'demo-long', page_number: '1300', q: 'mascot', series: 'Example Weekly'}, '1201', '1300']
+      [{ item: 'demo-long', page_number: '1150', q: 'mascot', series: 'Example Weekly',
+         year_from: '1920', year_to: '1929', collection: '/repositories/2/resources/1',
+         sort: 'date_desc', page: '3' }, '1150', nil],
+      [{ item: 'demo-long', page_number: '571', q: 'mascot' }, '572', nil],
+      [{ item: 'demo-long', page_number: '1300', q: 'mascot', series: 'Example Weekly' }, '1201', '1300']
     ].each do |(input, target_number, missed_number)|
       with_api(api) do
         controller = OcrSearchController.new(input)
@@ -307,7 +312,7 @@ class OcrSearchControllerTest < Minitest::Test
         query = URI.decode_www_form(location.query).to_h
 
         assert_equal 302, controller.rendered_status
-        assert_equal({'page_number' => input[:page_number], 'pages_per_page' => '50'}, request.fetch(:params))
+        assert_equal({ 'page_number' => input[:page_number], 'pages_per_page' => '50' }, request.fetch(:params))
         assert_equal '/digital-text/items/demo-long', location.path
         assert_equal "https://example.org/canvas/demo-long/#{target_number}", query['canvas']
         assert_equal input[:q], query['q']
@@ -360,17 +365,20 @@ class OcrSearchControllerTest < Minitest::Test
 
   def test_page_view_uses_selected_neighbors_and_hides_absent_neighbors_without_rendering_the_full_list
     api = synthetic_long_item_api
-    {'1' => ['Page 1 of 1200', nil, 'Page 2'],
-     '37' => ['Page 37 of 1200', 'Page 36', 'Page 38'],
-     '572' => ['Page 572 (571 of 1200)', 'Page 570', 'Page 573'],
-     '1201' => ['Page 1201 (1200 of 1200)', 'Page 1200', nil]}.each do |page_number, (current, previous, following)|
+    { '1' => ['Page 1 of 1200', nil, 'Page 2'],
+      '37' => ['Page 37 of 1200', 'Page 36', 'Page 38'],
+      '572' => ['Page 572 (571 of 1200)', 'Page 570', 'Page 573'],
+      '1201' => ['Page 1201 (1200 of 1200)', 'Page 1200', nil] }.each do |page_number, (current, previous, following)|
       with_api(api) do
-        controller = OcrSearchController.new(item: 'demo-long', canvas: "https://example.org/canvas/demo-long/#{page_number}", q: 'mascot', year_to: '1929')
+        controller = OcrSearchController.new(item: 'demo-long',
+                                             canvas: "https://example.org/canvas/demo-long/#{page_number}",
+                                             q: 'mascot', year_to: '1929')
         controller.show
         html = controller.render_view('show')
         request = api.item_requests.last
 
-        assert_equal({'canvas' => "https://example.org/canvas/demo-long/#{page_number}", 'pages_per_page' => '50'}, request.fetch(:params))
+        assert_equal({ 'canvas' => "https://example.org/canvas/demo-long/#{page_number}", 'pages_per_page' => '50' },
+                     request.fetch(:params))
         assert_includes html, current
         previous ? assert_includes(html, previous) : refute_includes(html, 'Page 0')
         following ? assert_includes(html, following) : refute_includes(html, 'Page 1202')
@@ -380,10 +388,10 @@ class OcrSearchControllerTest < Minitest::Test
         refute_includes html, 'Pages in this item ('
         assert_operator html.scan(/<a\b/).length, :<=, 100
         assert_equal 1, html.scan(/aria-label="Page navigation"/).length
-        assert_internal_links_keep_state(html, {'q' => 'mascot', 'year_to' => '1929'})
+        assert_internal_links_keep_state(html, { 'q' => 'mascot', 'year_to' => '1929' })
         back_href = html.match(/<a href="([^"]+)">Back to page list/)[1]
         back_query = URI.decode_www_form(URI(CGI.unescapeHTML(back_href)).query).to_h
-        expected_set = {'572' => '12', '1201' => '24'}.fetch(page_number, '1')
+        expected_set = { '572' => '12', '1201' => '24' }.fetch(page_number, '1')
         assert_equal expected_set, back_query['pages_page']
       end
     end
@@ -421,7 +429,11 @@ class OcrSearchControllerTest < Minitest::Test
       controller.show
       html = controller.render_view('show')
 
-      assert_match(/<nav aria-label="Page navigation".*?<\/nav>\s*<form(?=[^>]*method="get")(?=[^>]*class="ocr-page-jump")[^>]*>/m, html)
+      page_navigation_pattern = [
+        '<nav aria-label="Page navigation".*?</nav>\s*',
+        '<form(?=[^>]*method="get")(?=[^>]*class="ocr-page-jump")[^>]*>'
+      ].join
+      assert_match(Regexp.new(page_navigation_pattern, Regexp::MULTILINE), html)
       assert_includes html, '<label for="ocr-page-number">Go to page</label>'
       %w[q series year_from year_to collection sort page per_page].each do |key|
         assert_includes html, %(name="#{key}" value=)
@@ -467,17 +479,18 @@ class OcrSearchControllerTest < Minitest::Test
       'source_manifest_url' => 'https://example.org/manifests/demo-pilot',
       'page_count' => 1, 'truncated' => false, 'pages_page' => 1,
       'pages_per_page' => 50, 'pages_total_pages' => 1,
-      'selected' => {'position' => 1, 'page_number' => catalog_page['number'],
-                     'page_label' => catalog_page['label'], 'canvas_id' => catalog_page['canvas'],
-                     'previous' => nil, 'next' => nil},
-      'pages' => [{'page_number' => catalog_page['number'], 'page_label' => catalog_page['label'],
-                   'canvas_id' => catalog_page['canvas']}]
+      'selected' => { 'position' => 1, 'page_number' => catalog_page['number'],
+                      'page_label' => catalog_page['label'], 'canvas_id' => catalog_page['canvas'],
+                      'previous' => nil, 'next' => nil },
+      'pages' => [{ 'page_number' => catalog_page['number'], 'page_label' => catalog_page['label'],
+                    'canvas_id' => catalog_page['canvas'] }]
     }
     matches = item_search_payload('demo-c', catalog_page['canvas'])
     matches['results'][0]['item_id'] = item_id
     matches['results'][0]['pages'][0]['canvas_id'] = catalog_page['canvas']
     matches['results'][0]['pages'][0]['snippets'][0]['html'] = 'Synthetic <mark>highlight</mark>....'
-    api = FakeAPI.new(search: Response.new('200', JSON.generate(matches)), item: Response.new('200', JSON.generate(details)))
+    api = FakeAPI.new(search: Response.new('200', JSON.generate(matches)),
+                      item: Response.new('200', JSON.generate(details)))
 
     with_api(api) do
       controller = OcrSearchController.new(item: item_id, canvas: catalog_page['canvas'], q: 'highlight')
@@ -559,7 +572,12 @@ class OcrSearchControllerTest < Minitest::Test
        [:search, Response.new(code, '{"error":"busy"}')]].each do |endpoint, error_response|
         api = FakeAPI.new(
           item: endpoint == :item ? error_response : Response.new('200', JSON.generate(item)),
-          search: endpoint == :search ? error_response : Response.new('200', JSON.generate(item_search_payload('demo-c', 'https://example.org/canvas/demo-c/1')))
+          search: if endpoint == :search
+                    error_response
+                  else
+                    Response.new('200',
+                                 JSON.generate(item_search_payload('demo-c', 'https://example.org/canvas/demo-c/1')))
+                  end
         )
         with_api(api) do
           controller = OcrSearchController.new(item: 'demo-c', q: 'mascot')
@@ -592,6 +610,7 @@ class OcrSearchControllerTest < Minitest::Test
   def assert_internal_links_keep_state(html, expected)
     html.scan(/href="([^"]+)"/).flatten.each do |href|
       next unless href.start_with?('/digital-text')
+
       query = URI.decode_www_form(URI(CGI.unescapeHTML(href)).query || '').to_h
       expected.each { |key, value| assert_equal value, query[key] }
     end
@@ -600,13 +619,13 @@ class OcrSearchControllerTest < Minitest::Test
   def search_payload
     {
       'query' => 'mascot', 'corpus' => 'example', 'sort' => 'date_desc',
-      'filters' => {'series' => 'Example Weekly', 'year_from' => 1920, 'year_to' => 1929,
-                    'collection' => nil, 'item' => nil},
+      'filters' => { 'series' => 'Example Weekly', 'year_from' => 1920, 'year_to' => 1929,
+                     'collection' => nil, 'item' => nil },
       'page' => 1, 'per_page' => 10, 'total_items' => 2, 'matching_pages' => 3,
       'partial' => false, 'solr_time_ms' => 4,
       'facets' => {
-        'series' => [{'value' => 'Example Weekly', 'count' => 2}, {'value' => 'Other Weekly', 'count' => 1}],
-        'decade' => [{'value' => 1920, 'count' => 2}, {'value' => 1930, 'count' => 1}]
+        'series' => [{ 'value' => 'Example Weekly', 'count' => 2 }, { 'value' => 'Other Weekly', 'count' => 1 }],
+        'decade' => [{ 'value' => 1920, 'count' => 2 }, { 'value' => 1930, 'count' => 1 }]
       },
       'results' => [
         {
@@ -631,27 +650,27 @@ class OcrSearchControllerTest < Minitest::Test
     {
       'id' => "example:#{item_id}:#{page_number}", 'page_number' => page_number,
       'page_label' => "Page #{page_number}", 'canvas_id' => "https://example.org/canvas/#{item_id}/#{page_number}",
-      'snippets' => [{'html' => 'A <mark>mascot</mark> appears.', 'pages' => [], 'regions' => [], 'highlights' => []}]
+      'snippets' => [{ 'html' => 'A <mark>mascot</mark> appears.', 'pages' => [], 'regions' => [], 'highlights' => [] }]
     }
   end
 
   def item_search_payload(item_id, canvas_id)
     {
       'query' => 'mascot', 'corpus' => 'example', 'sort' => 'relevance',
-      'filters' => {'series' => nil, 'year_from' => nil, 'year_to' => nil,
-                    'collection' => nil, 'item' => item_id},
+      'filters' => { 'series' => nil, 'year_from' => nil, 'year_to' => nil,
+                     'collection' => nil, 'item' => item_id },
       'page' => 1, 'per_page' => 10, 'total_items' => 1, 'matching_pages' => 1,
       'partial' => false, 'solr_time_ms' => 3,
-      'facets' => {'series' => [], 'decade' => []},
+      'facets' => { 'series' => [], 'decade' => [] },
       'results' => [{
         'item_id' => item_id, 'title' => 'Synthetic issue C', 'series' => 'Example Review',
         'issue_date' => '1931-04', 'collection_id' => '/repositories/2/resources/1',
         'aspace_record' => 'https://example.org/records/demo-c',
         'source_manifest_url' => 'https://example.org/manifests/demo-c', 'matching_pages' => 1,
-        'pages' => [{'id' => 'example:demo-c:1', 'page_number' => 1, 'page_label' => 'Page 1',
-                     'canvas_id' => canvas_id,
-                     'snippets' => [{'html' => 'A <mark>mascot</mark> appears on the first page.',
-                                     'pages' => [], 'regions' => [], 'highlights' => []}]}]
+        'pages' => [{ 'id' => 'example:demo-c:1', 'page_number' => 1, 'page_label' => 'Page 1',
+                      'canvas_id' => canvas_id,
+                      'snippets' => [{ 'html' => 'A <mark>mascot</mark> appears on the first page.',
+                                       'pages' => [], 'regions' => [], 'highlights' => [] }] }]
       }]
     }
   end
@@ -666,8 +685,8 @@ class OcrSearchControllerTest < Minitest::Test
                    else
                      "Page #{page_number}"
                    end
-      {'page_number' => page_number, 'page_label' => page_label,
-       'canvas_id' => "https://example.org/canvas/demo-long/#{page_number}"}
+      { 'page_number' => page_number, 'page_label' => page_label,
+        'canvas_id' => "https://example.org/canvas/demo-long/#{page_number}" }
     end
     page_count = pages.length
     pages_per_page = parameters.fetch('pages_per_page', '50').to_i
@@ -677,6 +696,7 @@ class OcrSearchControllerTest < Minitest::Test
     if parameters['canvas']
       selected_index = pages.index { |page| page['canvas_id'] == parameters['canvas'] }
       return Response.new('404', '{}') unless selected_index
+
       pages_page = selected_index / pages_per_page + 1
     elsif parameters['page_number']
       jump_position = pages.index { |page| page['page_number'] >= parameters['page_number'].to_i }
@@ -692,10 +712,10 @@ class OcrSearchControllerTest < Minitest::Test
     slice = pages.slice(start, pages_per_page) || []
     selected = if selected_index
                  page = pages[selected_index]
-                 {'position' => selected_index + 1, 'page_number' => page['page_number'],
-                  'page_label' => page['page_label'], 'canvas_id' => page['canvas_id'],
-                  'previous' => selected_index.positive? ? pages[selected_index - 1] : nil,
-                  'next' => selected_index < pages.length - 1 ? pages[selected_index + 1] : nil}
+                 { 'position' => selected_index + 1, 'page_number' => page['page_number'],
+                   'page_label' => page['page_label'], 'canvas_id' => page['canvas_id'],
+                   'previous' => selected_index.positive? ? pages[selected_index - 1] : nil,
+                   'next' => selected_index < pages.length - 1 ? pages[selected_index + 1] : nil }
                end
     item = {
       'item_id' => 'demo-long', 'title' => 'Synthetic long item', 'series' => 'Example Weekly',
@@ -714,11 +734,11 @@ class OcrSearchControllerTest < Minitest::Test
   def synthetic_long_item_api
     search = {
       'query' => 'mascot', 'corpus' => 'example', 'sort' => 'relevance',
-      'filters' => {'series' => nil, 'year_from' => nil, 'year_to' => nil,
-                    'collection' => nil, 'item' => 'demo-long'},
+      'filters' => { 'series' => nil, 'year_from' => nil, 'year_to' => nil,
+                     'collection' => nil, 'item' => 'demo-long' },
       'page' => 1, 'per_page' => 25, 'total_items' => 1, 'matching_pages' => 0,
       'partial' => false, 'solr_time_ms' => 1,
-      'facets' => {'series' => [], 'decade' => []}, 'results' => []
+      'facets' => { 'series' => [], 'decade' => [] }, 'results' => []
     }
     FakeAPI.new(search: Response.new('200', JSON.generate(search)),
                 item: ->(_endpoint, _id, parameters) { long_item_response(parameters) })
@@ -735,13 +755,14 @@ class OcrSearchControllerTest < Minitest::Test
     end
 
     def search(endpoint, params)
-      @search_requests << {endpoint: endpoint, params: params}
+      @search_requests << { endpoint: endpoint, params: params }
       @search_response
     end
 
     def item(endpoint, id, parameters = {})
-      @item_requests << {endpoint: endpoint, id: id, params: parameters}
+      @item_requests << { endpoint: endpoint, id: id, params: parameters }
       return @item_response.call(endpoint, id, parameters) if @item_response.respond_to?(:call)
+
       @item_response || Response.new('404', '{}')
     end
   end
@@ -756,12 +777,12 @@ class OcrSearchControllerTest < Minitest::Test
     end
 
     def stylesheet_link_tag(source, options = {})
-      attributes = {href: source}.merge(options)
+      attributes = { href: source }.merge(options)
       "<link #{html_attributes(attributes)}>"
     end
 
     def javascript_include_tag(source, options = {})
-      attributes = {src: source}.merge(options)
+      attributes = { src: source }.merge(options)
       "<script #{html_attributes(attributes)}></script>"
     end
 

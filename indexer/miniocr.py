@@ -1,4 +1,5 @@
 """Convert a single-page hOCR document to Solr OCR Highlighting MiniOCR."""
+
 import re
 import xml.etree.ElementTree as ET
 
@@ -23,10 +24,7 @@ def _bounds(element, description):
 
 
 def _word_text(word):
-    alternatives = [
-        element for element in word.iter()
-        if element is not word and _has_class(element, 'alternatives')
-    ]
+    alternatives = [element for element in word.iter() if element is not word and _has_class(element, 'alternatives')]
     if alternatives:
         forms = []
         for alternative in alternatives[0]:
@@ -69,8 +67,7 @@ def hocr_to_miniocr(hocr):
         raise ValueError('hOCR page bbox must start at 0,0 and have positive dimensions')
     width, height = right, bottom
 
-    words = [element for element in page.iter()
-             if _has_class(element, 'ocrx_word', 'ocr_word')]
+    words = [element for element in page.iter() if _has_class(element, 'ocrx_word', 'ocr_word')]
     if not words:
         raise ValueError('expected nonempty hOCR page')
     geometry = {}
@@ -88,8 +85,7 @@ def hocr_to_miniocr(hocr):
     for line in page.iter():
         if not _has_class(line, 'ocr_line', 'ocrx_line'):
             continue
-        current = [word for word in line.iter()
-                   if id(word) in geometry and id(word) not in assigned]
+        current = [word for word in line.iter() if id(word) in geometry and id(word) not in assigned]
         if current:
             line_words.append(current)
             assigned.update(id(word) for word in current)
@@ -98,18 +94,26 @@ def hocr_to_miniocr(hocr):
         line_words.append(remaining)
 
     root = ET.Element('ocr')
-    mini_page = ET.SubElement(root, 'p', {
-        f'{{{XML_NAMESPACE}}}id': _page_identifier(page),
-        'wh': f'{width} {height}',
-    })
+    mini_page = ET.SubElement(
+        root,
+        'p',
+        {
+            f'{{{XML_NAMESPACE}}}id': _page_identifier(page),
+            'wh': f'{width} {height}',
+        },
+    )
     block = ET.SubElement(mini_page, 'b')
     for line in line_words:
         mini_line = ET.SubElement(block, 'l')
         for index, word in enumerate(line):
             x, y, word_width, word_height, text = geometry[id(word)]
-            mini_word = ET.SubElement(mini_line, 'w', {
-                'x': f'{x} {y} {word_width} {word_height}',
-            })
+            mini_word = ET.SubElement(
+                mini_line,
+                'w',
+                {
+                    'x': f'{x} {y} {word_width} {word_height}',
+                },
+            )
             mini_word.text = text
             if index < len(line) - 1:
                 mini_word.tail = ' '

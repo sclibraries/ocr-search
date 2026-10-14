@@ -1,0 +1,10 @@
+AllCops:
+  # Local Ruby 2.6 syntax also runs on ArchivesSpace 4.2's JRuby 9.4.9.
+  TargetRubyVersion: 2.6
+
+# Plugin code mutates strings (for example, excerpt.sub!); preserve existing behavior.
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Metrics/MethodLength:
+  Max: 25

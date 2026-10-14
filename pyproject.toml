@@ -1,0 +1,27 @@
+[project]
+name = "ocr-search-lint"
+version = "0.0.0"
+requires-python = ">=3.7"
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff==0.17.0"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py37"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "C90", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 40

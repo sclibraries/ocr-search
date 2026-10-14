@@ -31,9 +31,10 @@ class MiniOcrTests(unittest.TestCase):
         self.assertEqual(page.get('{http://www.w3.org/XML/1998/namespace}id'), 'page-a-2')
         self.assertEqual(page.get('wh'), '600 800')
         self.assertEqual(len(root.findall('.//l')), 1)
-        self.assertEqual([word.text for word in words], [
-            'A', 'silver', 'falcon', 'mascot', 'watches', 'over', 'the', 'library.'
-        ])
+        self.assertEqual(
+            [word.text for word in words],
+            ['A', 'silver', 'falcon', 'mascot', 'watches', 'over', 'the', 'library.'],
+        )
         self.assertEqual(words[1].get('x'), '110 100 70 30')
 
     def test_conversion_is_smaller_for_all_synthetic_pilot_pages(self):
@@ -57,9 +58,9 @@ class MiniOcrTests(unittest.TestCase):
 
     def test_conversion_escapes_xml_text_without_changing_word_text(self):
         self.require_converter()
-        source = '''<html><body><div class="ocr_page" id="p1" title="bbox 0 0 20 10">
+        source = """<html><body><div class="ocr_page" id="p1" title="bbox 0 0 20 10">
           <span class="ocr_line"><span class="ocrx_word" title="bbox 1 1 19 9">A &amp; B</span></span>
-        </div></body></html>'''
+        </div></body></html>"""
 
         root = ET.fromstring(hocr_to_miniocr(source))
 

@@ -1,4 +1,5 @@
 """Integration checks against an explicitly configured search API and Solr."""
+
 import json
 import os
 from pathlib import Path
@@ -89,8 +90,12 @@ class HttpTests(unittest.TestCase):
         matching = next(d for d in docs if d['page_number'] == row['pages'][0])
         status, baseline = get({'q': row['query'], 'per_page': 25})
         self.assertEqual(status, 200)
-        restricted = dict(matching, id='ocr-search-restricted-regression',
-                          corpus_id=baseline['corpus'], access='restricted')
+        restricted = dict(
+            matching,
+            id='ocr-search-restricted-regression',
+            corpus_id=baseline['corpus'],
+            access='restricted',
+        )
         try:
             request(SOLR, '/update?commit=true', [matching, restricted])
             status, result = get({'q': row['query'], 'per_page': 25})
@@ -98,8 +103,11 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(result['total_pages'], baseline['total_pages'])
             self.assertNotIn(restricted['id'], [hit['id'] for hit in result['results']])
         finally:
-            request(SOLR, '/update?commit=true',
-                    {'delete': [{'id': matching['id']}, {'id': restricted['id']}]})
+            request(
+                SOLR,
+                '/update?commit=true',
+                {'delete': [{'id': matching['id']}, {'id': restricted['id']}]},
+            )
 
     def test_reindex_updates_and_removes_only_owned_pages(self):
         from index import build_documents, request, synchronize
@@ -118,20 +126,31 @@ class HttpTests(unittest.TestCase):
             docs[0]['title'] = 'Updated synthetic regression fixture'
             result = synchronize(SOLR, 'ocr-search-regression', docs[:-1])
             self.assertEqual(result['removed'], 1)
-            params = urllib.parse.urlencode({
-                'q': 'corpus_id:"ocr-search-regression"', 'fl': 'id,title', 'rows': 25, 'wt': 'json'
-            })
+            params = urllib.parse.urlencode(
+                {
+                    'q': 'corpus_id:"ocr-search-regression"',
+                    'fl': 'id,title',
+                    'rows': 25,
+                    'wt': 'json',
+                }
+            )
             state = request(SOLR, '/select?' + params)['response']
             self.assertEqual(state['numFound'], len(docs) - 1)
-            self.assertEqual(next(d['title'] for d in state['docs'] if d['id'] == docs[0]['id']),
-                             'Updated synthetic regression fixture')
+            self.assertEqual(
+                next(d['title'] for d in state['docs'] if d['id'] == docs[0]['id']),
+                'Updated synthetic regression fixture',
+            )
             self.assertEqual(get({'q': row['query']})[1]['total_pages'], baseline['total_pages'])
         finally:
             request(SOLR, '/update?commit=true', {'delete': [{'id': d['id']} for d in docs]})
 
     def test_rejects_query_injection_and_unbounded_requests(self):
-        for params in [{'q': '*:*'}, {'q': 'sample', 'fq': 'access:restricted'},
-                       {'q': 'sample', 'per_page': 10000}, {'q': '"broken'}]:
+        for params in [
+            {'q': '*:*'},
+            {'q': 'sample', 'fq': 'access:restricted'},
+            {'q': 'sample', 'per_page': 10000},
+            {'q': '"broken'},
+        ]:
             with self.subTest(params=params):
                 self.assertEqual(get(params)[0], 400)
 

@@ -1,4 +1,5 @@
 """Sequential, checkpointed content validation with explicit sample budgets."""
+
 from datetime import datetime, timezone
 import hashlib
 import time
@@ -23,7 +24,10 @@ def metadata_issues(row, result):
         issues.append('aspace_record_unresolved')
     if not row.get('image_width') or not row.get('image_height'):
         issues.append('image_dimensions_unverified')
-    elif result.get('ocr_width') and (result['ocr_width'], result['ocr_height']) != (row['image_width'], row['image_height']):
+    elif result.get('ocr_width') and (result['ocr_width'], result['ocr_height']) != (
+        row['image_width'],
+        row['image_height'],
+    ):
         issues.append('image_dimensions_mismatch')
     if result.get('bytes') is not None and result['bytes'] != int(row['recorded_bytes']):
         issues.append('recorded_size_mismatch')
@@ -32,8 +36,16 @@ def metadata_issues(row, result):
     return issues
 
 
-def audit(catalog, source, max_files=100, max_bytes=50_000_000, max_file_bytes=2_000_000,
-          max_seconds=300, max_requests=100, delay=0):
+def audit(
+    catalog,
+    source,
+    max_files=100,
+    max_bytes=50_000_000,
+    max_file_bytes=2_000_000,
+    max_seconds=300,
+    max_requests=100,
+    delay=0,
+):
     if min(max_files, max_bytes, max_file_bytes, max_seconds, max_requests) <= 0 or delay < 0:
         raise ValueError('budgets must be positive; delay must be nonnegative')
     catalog.bind_source(source.identity)
@@ -57,22 +69,37 @@ def audit(catalog, source, max_files=100, max_bytes=50_000_000, max_file_bytes=2
         before = source.bytes_read
         try:
             data, metadata = source.read(row, max_file_bytes)
-            result = dict(inspect_hocr(data), **metadata, bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+            result = dict(
+                inspect_hocr(data),
+                **metadata,
+                bytes=len(data),
+                sha256=hashlib.sha256(data).hexdigest(),
+            )
         except Exception as error:
             # Persist a category, not credential-bearing endpoint/error messages.
             response = getattr(error, 'response', {})
             code = response.get('Error', {}).get('Code', type(error).__name__)
             category = str(error) if isinstance(error, ValueError) else code
             result = {'status': 'read_error', 'error': category}
-        result.update(public_index_approved=False, checked_at=datetime.now(timezone.utc).isoformat(),
-                      source=source.identity, transferred_bytes=source.bytes_read-before)
+        result.update(
+            public_index_approved=False,
+            checked_at=datetime.now(timezone.utc).isoformat(),
+            source=source.identity,
+            transferred_bytes=source.bytes_read - before,
+        )
         result['issues'] = metadata_issues(row, result)
         catalog.save(file_id, result)
         processed += 1
         if delay:
             time.sleep(delay)
-    return {'processed': processed, 'pending': sum(1 for _ in catalog.pending()),
-            'bytes_read': source.bytes_read-initial_bytes, 'get_requests': source.requests-initial_requests,
-            'budgeted_bytes': source.budgeted_bytes-initial_budget,
-            'list_requests': 0, 'head_requests': 0, 'elapsed_seconds': round(time.monotonic()-start, 3),
-            'stop_reason': reason}
+    return {
+        'processed': processed,
+        'pending': sum(1 for _ in catalog.pending()),
+        'bytes_read': source.bytes_read - initial_bytes,
+        'get_requests': source.requests - initial_requests,
+        'budgeted_bytes': source.budgeted_bytes - initial_budget,
+        'list_requests': 0,
+        'head_requests': 0,
+        'elapsed_seconds': round(time.monotonic() - start, 3),
+        'stop_reason': reason,
+    }

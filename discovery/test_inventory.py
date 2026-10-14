@@ -18,7 +18,11 @@ class FakeObjectStore:
         if kwargs['Key'] in self.head_errors:
             raise self.head_errors[kwargs['Key']]
         size = self.sizes[kwargs['Key']]
-        return {'ContentLength': size, 'VersionId': 'version-' + str(size), 'ETag': f'"etag-{size}"'}
+        return {
+            'ContentLength': size,
+            'VersionId': 'version-' + str(size),
+            'ETag': f'"etag-{size}"',
+        }
 
     def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
@@ -45,11 +49,24 @@ def synthetic_inputs(root):
             key = f'synthetic/{item_id}/page-{page_number}.hocr'
             sizes[key] = size
             digest = hashlib.sha256(f'{item_id} page {page_number}'.encode()).hexdigest()
-            canvas_rows.append({'@id': canvas_id, 'label': f'{item_id}, page {page_number}',
-                                'width': 600, 'height': 800})
-            pages.append({'item': item_id, 'page': page_number, 'canvas': canvas_id,
-                          'label': f'{item_id}, page {page_number}', 'sha256': digest,
-                          'aspace_record': record})
+            canvas_rows.append(
+                {
+                    '@id': canvas_id,
+                    'label': f'{item_id}, page {page_number}',
+                    'width': 600,
+                    'height': 800,
+                }
+            )
+            pages.append(
+                {
+                    'item': item_id,
+                    'page': page_number,
+                    'canvas': canvas_id,
+                    'label': f'{item_id}, page {page_number}',
+                    'sha256': digest,
+                    'aspace_record': record,
+                }
+            )
             access_terms = ['public']
             publication_state = 'published'
             if item_number == 0 and page_number == 2:
@@ -61,27 +78,32 @@ def synthetic_inputs(root):
                 ancestry = [[f'collection-{item_number % 3}', 'series-a', 'series-b', f'item-{item_id}']]
             elif item_number == 1:
                 ancestry.append([f'collection-{(item_number + 1) % 3}', f'item-{item_id}'])
-            rows.append({
-                'schema_version': 1,
-                'file_id': item_number * 2 + page_number,
-                'page_id': f'page-{item_id}-{page_number}',
-                'item_id': item_id,
-                'page_order': page_number,
-                'canvas_id': canvas_id,
-                'manifest_url': manifest_url,
-                's3_key': key,
-                'recorded_bytes': size,
-                'media_use': 'Extracted hOCR',
-                'campus_ids': ['synthetic-campus'],
-                'collection_ancestry': ancestry,
-                'ancestry_depth_limit_reached': item_number == 14 and page_number == 2,
-                'aspace_record': record,
-                'publication_state': publication_state,
-                'access_terms': access_terms,
-            })
-        manifest = {'@context': 'http://iiif.io/api/presentation/2/context.json',
-                    '@id': manifest_url, '@type': 'sc:Manifest',
-                    'sequences': [{'@type': 'sc:Sequence', 'canvases': canvas_rows}]}
+            rows.append(
+                {
+                    'schema_version': 1,
+                    'file_id': item_number * 2 + page_number,
+                    'page_id': f'page-{item_id}-{page_number}',
+                    'item_id': item_id,
+                    'page_order': page_number,
+                    'canvas_id': canvas_id,
+                    'manifest_url': manifest_url,
+                    's3_key': key,
+                    'recorded_bytes': size,
+                    'media_use': 'Extracted hOCR',
+                    'campus_ids': ['synthetic-campus'],
+                    'collection_ancestry': ancestry,
+                    'ancestry_depth_limit_reached': item_number == 14 and page_number == 2,
+                    'aspace_record': record,
+                    'publication_state': publication_state,
+                    'access_terms': access_terms,
+                }
+            )
+        manifest = {
+            '@context': 'http://iiif.io/api/presentation/2/context.json',
+            '@id': manifest_url,
+            '@type': 'sc:Manifest',
+            'sequences': [{'@type': 'sc:Sequence', 'canvases': canvas_rows}],
+        }
         (manifests / f'{item_id}.json').write_text(json.dumps(manifest))
     evidence = {'schema_version': 1, 'items': items, 'pages': pages}
     evidence_path = root / 'evidence.json'
@@ -108,12 +130,19 @@ class InventoryTests(unittest.TestCase):
         spec = importlib.util.find_spec('discovery.inventory')
         self.assertIsNotNone(spec, 'discovery.inventory command support has not been implemented')
         from discovery.inventory import build_inventory, write_inventory
+
         return build_inventory, write_inventory
 
     def test_inventory_reconciles_synthetic_pages_and_fails_closed_on_access(self):
         build_inventory, _ = self.inventory_api()
-        result = build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        result = build_inventory(
+            self.rows,
+            self.evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
 
         self.assertEqual(len(result['pages']), 30)
         expected = {(page['item'], page['page']): page for page in self.evidence['pages']}
@@ -127,8 +156,10 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(access[('demo-item-02', 1)], 'public')
         self.assertEqual(len(self.object_store.head_calls), 30)
         self.assertEqual(result['pages'][0]['s3_etag'], '"etag-101"')
-        self.assertEqual(result['reconciliation']['pages_by_collection'], {
-            'collection-0': 10, 'collection-1': 10, 'collection-2': 12})
+        self.assertEqual(
+            result['reconciliation']['pages_by_collection'],
+            {'collection-0': 10, 'collection-1': 10, 'collection-2': 12},
+        )
         self.assertIn('demo-item-00', result['reconciliation']['deep_items'])
         self.assertIn('demo-item-01', result['reconciliation']['multiple_parent_items'])
         self.assertIn('demo-item-14', result['reconciliation']['ancestry_truncated_items'])
@@ -136,6 +167,7 @@ class InventoryTests(unittest.TestCase):
 
     def test_access_mapping_controls_terms_and_published_pages_without_terms(self):
         from discovery.inventory import classify_access
+
         self.assertEqual(classify_access('published', ['public'], [], self.access_mapping), 'public')
         self.assertEqual(classify_access('published', ['public', 'open-use'], [], self.access_mapping), 'unknown')
         self.assertEqual(classify_access('published', ['restricted'], [], self.access_mapping), 'restricted')
@@ -146,8 +178,14 @@ class InventoryTests(unittest.TestCase):
         build_inventory, _ = self.inventory_api()
         evidence = json.loads(json.dumps(self.evidence))
         del evidence['pages'][0]['sha256']
-        result = build_inventory([self.rows[0]], evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        result = build_inventory(
+            [self.rows[0]],
+            evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
         page = result['pages'][0]
         self.assertEqual(page['sha256'], '')
         self.assertEqual(page['s3_etag'], '"etag-101"')
@@ -174,17 +212,24 @@ class InventoryTests(unittest.TestCase):
         third_path = self.manifests / 'demo-item-02.json'
         third = json.loads(third_path.read_text())
         third['label'] = 'Sample Journal'
-        third['metadata'] = [{'label': 'Publication', 'value': 'Sample Journal'},
-                             {'label': 'Date', 'value': '1927'}]
+        third['metadata'] = [
+            {'label': 'Publication', 'value': 'Sample Journal'},
+            {'label': 'Date', 'value': '1927'},
+        ]
         third_path.write_text(json.dumps(third))
 
         result = build_inventory(
-            self.rows[:6], self.evidence, self.manifests, self.object_store,
-            source_bucket='synthetic-source', access_mapping=self.access_mapping,
+            self.rows[:6],
+            self.evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
             manifest_metadata_labels={
                 'series': ['Publication', 'Publication title'],
                 'issue_date': ['Issue date', 'Date'],
-            })
+            },
+        )
 
         pages = {(page['item_id'], page['page_number']): page for page in result['pages']}
         self.assertEqual(pages[('demo-item-00', 1)]['item_title'], 'Synthetic Weekly')
@@ -203,14 +248,21 @@ class InventoryTests(unittest.TestCase):
         from discovery.inventory import read_manifest_metadata_labels
 
         path = self.root / 'manifest-metadata-labels.json'
-        path.write_text(json.dumps({
-            'series': ['Newspaper title', 'Publication'],
-            'issue_date': ['Issue date', 'Date'],
-        }))
-        self.assertEqual(read_manifest_metadata_labels(path), {
-            'series': ['Newspaper title', 'Publication'],
-            'issue_date': ['Issue date', 'Date'],
-        })
+        path.write_text(
+            json.dumps(
+                {
+                    'series': ['Newspaper title', 'Publication'],
+                    'issue_date': ['Issue date', 'Date'],
+                }
+            )
+        )
+        self.assertEqual(
+            read_manifest_metadata_labels(path),
+            {
+                'series': ['Newspaper title', 'Publication'],
+                'issue_date': ['Issue date', 'Date'],
+            },
+        )
 
         path.write_text(json.dumps({'series': 'Publication'}))
         with self.assertRaisesRegex(ValueError, 'list of label names'):
@@ -219,8 +271,14 @@ class InventoryTests(unittest.TestCase):
     def test_inventory_requires_a_reviewed_access_mapping(self):
         build_inventory, _ = self.inventory_api()
         with self.assertRaisesRegex(ValueError, 'access mapping'):
-            build_inventory(self.rows[:1], self.evidence, self.manifests, self.object_store,
-                             source_bucket='synthetic-source', access_mapping=None)
+            build_inventory(
+                self.rows[:1],
+                self.evidence,
+                self.manifests,
+                self.object_store,
+                source_bucket='synthetic-source',
+                access_mapping=None,
+            )
 
     def test_compass_manifest_fills_canvas_when_evidence_and_converted_manifest_are_absent(self):
         from discovery.manifests import fetch_manifests
@@ -234,31 +292,49 @@ class InventoryTests(unittest.TestCase):
                 {'label': 'Publication', 'value': 'Fixture Weekly'},
                 {'label': 'Issue date', 'value': 'December 7, 1927'},
             ],
-            'sequences': [{'canvases': [
-                {'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'},
-                {'@id': f'https://canvas.example.test/{item_id}/2', 'label': 'Page 2'},
-            ]}],
+            'sequences': [
+                {
+                    'canvases': [
+                        {'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'},
+                        {'@id': f'https://canvas.example.test/{item_id}/2', 'label': 'Page 2'},
+                    ]
+                }
+            ],
         }
         raw_manifest = json.dumps(compass_manifest).encode()
         with tempfile.TemporaryDirectory() as temporary:
             manifest_dir = Path(temporary) / 'compass'
-            fetch_manifests(rows, manifest_dir, 'https://compass.example.test',
-                            fetcher=lambda _: raw_manifest, sleep_fn=lambda _: None)
+            fetch_manifests(
+                rows,
+                manifest_dir,
+                'https://compass.example.test',
+                fetcher=lambda _: raw_manifest,
+                sleep_fn=lambda _: None,
+            )
             from discovery.inventory import build_inventory
-            result = build_inventory(rows, None, None, self.object_store,
-                                     source_bucket='synthetic-source',
-                                     compass_manifest_directory=manifest_dir,
-                                     manifest_metadata_labels={
-                                         'series': ['Publication'],
-                                         'issue_date': ['Issue date'],
-                                     },
-                                     access_mapping=self.access_mapping)
+
+            result = build_inventory(
+                rows,
+                None,
+                None,
+                self.object_store,
+                source_bucket='synthetic-source',
+                compass_manifest_directory=manifest_dir,
+                manifest_metadata_labels={
+                    'series': ['Publication'],
+                    'issue_date': ['Issue date'],
+                },
+                access_mapping=self.access_mapping,
+            )
 
         pages = result['pages']
-        self.assertEqual([page['canvas_id'] for page in pages], [
-            f'https://canvas.example.test/{item_id}/1',
-            f'https://canvas.example.test/{item_id}/2',
-        ])
+        self.assertEqual(
+            [page['canvas_id'] for page in pages],
+            [
+                f'https://canvas.example.test/{item_id}/1',
+                f'https://canvas.example.test/{item_id}/2',
+            ],
+        )
         self.assertEqual([page['sha256'] for page in pages], ['', ''])
         self.assertEqual([page['access'] for page in pages], ['public', 'restricted'])
         self.assertEqual(pages[0]['manifest_url'], compass_manifest['@id'])
@@ -271,30 +347,36 @@ class InventoryTests(unittest.TestCase):
         build_inventory, _ = self.inventory_api()
         fixtures = Path(__file__).resolve().parent.parent / 'indexer' / 'fixtures'
         evidence = json.loads((fixtures / 'evidence.json').read_text())
-        items = {item['id']: item for item in evidence['items']}
         rows, sizes = [], {}
         for index, page in enumerate(evidence['pages'], 1):
-            item = items[page['item']]
-            key = f"synthetic/{page['item']}/{page['local_file']}"
+            key = f'synthetic/{page["item"]}/{page["local_file"]}'
             size = (fixtures / 'hocr' / page['local_file']).stat().st_size
             sizes[key] = size
-            rows.append({
-                'schema_version': 1,
-                'file_id': index,
-                'page_id': f"synthetic-page-{index}",
-                'item_id': page['item'],
-                'page_order': page['page'],
-                's3_key': key,
-                'recorded_bytes': size,
-                'media_use': 'synthetic-hOCR',
-                'campus_ids': ['synthetic-campus'],
-                'collection_ancestry': [[f"collection-{page['item']}", page['item']]],
-                'publication_state': 'published',
-                'access_terms': [],
-            })
+            rows.append(
+                {
+                    'schema_version': 1,
+                    'file_id': index,
+                    'page_id': f'synthetic-page-{index}',
+                    'item_id': page['item'],
+                    'page_order': page['page'],
+                    's3_key': key,
+                    'recorded_bytes': size,
+                    'media_use': 'synthetic-hOCR',
+                    'campus_ids': ['synthetic-campus'],
+                    'collection_ancestry': [[f'collection-{page["item"]}', page['item']]],
+                    'publication_state': 'published',
+                    'access_terms': [],
+                }
+            )
         store = FakeObjectStore(sizes)
-        result = build_inventory(rows, evidence, fixtures / 'hocr', store,
-                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        result = build_inventory(
+            rows,
+            evidence,
+            fixtures / 'hocr',
+            store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
         actual = {(page['item_id'], page['page_number']): page for page in result['pages']}
         for source in evidence['pages']:
             page = actual[(source['item'], source['page'])]
@@ -309,8 +391,14 @@ class InventoryTests(unittest.TestCase):
         manifest['sequences'][0]['canvases'][0]['@id'] = 'https://example.test/wrong-canvas'
         manifest_path.write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, 'canvas'):
-            build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                             source_bucket='synthetic-source', access_mapping=self.access_mapping)
+            build_inventory(
+                self.rows,
+                self.evidence,
+                self.manifests,
+                self.object_store,
+                source_bucket='synthetic-source',
+                access_mapping=self.access_mapping,
+            )
 
     def test_one_source_file_can_have_multiple_page_associations(self):
         build_inventory, _ = self.inventory_api()
@@ -319,9 +407,14 @@ class InventoryTests(unittest.TestCase):
         second['file_id'] = first['file_id']
         second['s3_key'] = first['s3_key']
         second['recorded_bytes'] = first['recorded_bytes']
-        result = build_inventory([first, second], self.evidence, self.manifests,
-                                 self.object_store, source_bucket='synthetic-source',
-                                 access_mapping=self.access_mapping)
+        result = build_inventory(
+            [first, second],
+            self.evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
         self.assertEqual(result['reconciliation']['input_file_count'], 1)
         self.assertEqual(result['reconciliation']['page_count'], 2)
         self.assertEqual([page['page_number'] for page in result['pages']], [1, 2])
@@ -330,8 +423,14 @@ class InventoryTests(unittest.TestCase):
         build_inventory, _ = self.inventory_api()
         row = self.rows[0]
         self.object_store.head_errors[row['s3_key']] = FakeObjectStoreError()
-        result = build_inventory([row], self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        result = build_inventory(
+            [row],
+            self.evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
         page = result['pages'][0]
         self.assertEqual(page['s3_status'], 'unavailable')
         self.assertEqual(page['s3_error'], 'AccessDenied')
@@ -340,15 +439,20 @@ class InventoryTests(unittest.TestCase):
 
     def test_inventory_output_accepts_local_paths_and_configured_s3_uris(self):
         build_inventory, write_inventory = self.inventory_api()
-        result = build_inventory(self.rows, self.evidence, self.manifests, self.object_store,
-                                 source_bucket='synthetic-source', access_mapping=self.access_mapping)
+        result = build_inventory(
+            self.rows,
+            self.evidence,
+            self.manifests,
+            self.object_store,
+            source_bucket='synthetic-source',
+            access_mapping=self.access_mapping,
+        )
         local_file = self.root / 'out' / 'pages.jsonl'
         write_inventory(result, str(local_file), self.object_store)
         self.assertEqual(len(local_file.read_text().splitlines()), 30)
         self.assertTrue((local_file.parent / 'pages.reconciliation.json').is_file())
 
         write_inventory(result, 's3://review-bucket/private/pages.jsonl', self.object_store)
-        output_call = next(call for call in self.object_store.put_calls
-                           if call['Key'] == 'private/pages.jsonl')
+        output_call = next(call for call in self.object_store.put_calls if call['Key'] == 'private/pages.jsonl')
         self.assertEqual(output_call['Bucket'], 'review-bucket')
         self.assertEqual(len(output_call['Body'].decode().splitlines()), 30)

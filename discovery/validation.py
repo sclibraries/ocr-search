@@ -1,4 +1,5 @@
 """Inspect bounded HTML without executing it, loading external entities or retaining text."""
+
 from html.parser import HTMLParser
 import re
 
@@ -26,7 +27,11 @@ class HocrParser(HTMLParser):
         if 'ocr_page' in classes:
             self.pages.append(bbox(attrs.get('title')))
         if set(classes) & {'ocrx_word', 'ocr_word'}:
-            self.current_word = {'box': bbox(attrs.get('title')), 'text': '', 'depth': len(self.stack)}
+            self.current_word = {
+                'box': bbox(attrs.get('title')),
+                'text': '',
+                'depth': len(self.stack),
+            }
             self.words.append(self.current_word)
 
     def handle_startendtag(self, tag, attrs):
@@ -81,5 +86,10 @@ def inspect_hocr(data):
         if not box or not (0 <= box[0] < box[2] <= page[2] and 0 <= box[1] < box[3] <= page[3]):
             return {'status': 'invalid_coordinates'}
     count = sum(bool(word['text'].strip()) for word in parser.words)
-    return {'status': 'valid_hocr' if count else 'empty_hocr', 'word_count': count,
-            'ocr_width': page[2], 'ocr_height': page[3], 'skipped_blank_words': skipped_blank_words}
+    return {
+        'status': 'valid_hocr' if count else 'empty_hocr',
+        'word_count': count,
+        'ocr_width': page[2],
+        'ocr_height': page[3],
+        'skipped_blank_words': skipped_blank_words,
+    }

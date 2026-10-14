@@ -6,12 +6,12 @@ from pathlib import Path
 
 
 def synthetic_manifest(item_id):
-    return json.dumps({
-        '@id': f'https://compass.example.test/node/{item_id}/manifest',
-        'sequences': [{'canvases': [
-            {'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'}
-        ]}],
-    }).encode()
+    return json.dumps(
+        {
+            '@id': f'https://compass.example.test/node/{item_id}/manifest',
+            'sequences': [{'canvases': [{'@id': f'https://canvas.example.test/{item_id}/1', 'label': 'Page 1'}]}],
+        }
+    ).encode()
 
 
 class ManifestFetchTests(unittest.TestCase):
@@ -33,20 +33,34 @@ class ManifestFetchTests(unittest.TestCase):
                 return synthetic_manifest(item_id)
 
             with self.assertRaisesRegex(OSError, 'synthetic interruption'):
-                fetch_manifests(rows, output_dir, 'https://compass.example.test',
-                                requests_per_second=100, fetcher=fetcher, sleep_fn=lambda _: None)
+                fetch_manifests(
+                    rows,
+                    output_dir,
+                    'https://compass.example.test',
+                    requests_per_second=100,
+                    fetcher=fetcher,
+                    sleep_fn=lambda _: None,
+                )
 
-            entries = fetch_manifests(rows, output_dir, 'https://compass.example.test',
-                                      requests_per_second=100, fetcher=fetcher,
-                                      sleep_fn=lambda _: None)
+            entries = fetch_manifests(
+                rows,
+                output_dir,
+                'https://compass.example.test',
+                requests_per_second=100,
+                fetcher=fetcher,
+                sleep_fn=lambda _: None,
+            )
 
             self.assertEqual([entry['item_id'] for entry in entries], ['demo-a', 'demo-b', 'demo-c'])
-            self.assertEqual(calls, [
-                'https://compass.example.test/node/demo-a/manifest',
-                'https://compass.example.test/node/demo-b/manifest',
-                'https://compass.example.test/node/demo-b/manifest',
-                'https://compass.example.test/node/demo-c/manifest',
-            ])
+            self.assertEqual(
+                calls,
+                [
+                    'https://compass.example.test/node/demo-a/manifest',
+                    'https://compass.example.test/node/demo-b/manifest',
+                    'https://compass.example.test/node/demo-b/manifest',
+                    'https://compass.example.test/node/demo-c/manifest',
+                ],
+            )
             for entry in entries:
                 manifest_bytes = (output_dir / entry['filename']).read_bytes()
                 self.assertEqual(entry['sha256'], hashlib.sha256(manifest_bytes).hexdigest())
@@ -57,9 +71,17 @@ class ManifestFetchTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaisesRegex(ValueError, 'HTTPS'):
-                fetch_manifests([{'item_id': 'demo-a'}], Path(temporary) / 'manifests',
-                                'http://compass.example.test', fetcher=lambda _: b'{}')
+                fetch_manifests(
+                    [{'item_id': 'demo-a'}],
+                    Path(temporary) / 'manifests',
+                    'http://compass.example.test',
+                    fetcher=lambda _: b'{}',
+                )
 
             with self.assertRaisesRegex(ValueError, 'valid JSON'):
-                fetch_manifests([{'item_id': 'demo-a'}], Path(temporary) / 'manifests',
-                                'https://compass.example.test', fetcher=lambda _: b'not-json')
+                fetch_manifests(
+                    [{'item_id': 'demo-a'}],
+                    Path(temporary) / 'manifests',
+                    'https://compass.example.test',
+                    fetcher=lambda _: b'not-json',
+                )

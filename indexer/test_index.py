@@ -9,6 +9,7 @@ FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 EVIDENCE_FILE = Path(os.environ.get('OCR_EVIDENCE_FILE', FIXTURES / 'evidence.json'))
 SOURCE_DIR = Path(os.environ.get('OCR_FIXTURE_DIR', FIXTURES / 'hocr'))
 
+
 class IndexTests(unittest.TestCase):
     def setUp(self):
         path = Path(__file__).with_name('index.py')
@@ -138,6 +139,7 @@ class IndexTests(unittest.TestCase):
         for allowed in [set(), {'unknown'}]:
             with self.assertRaises(ValueError):
                 self.api.build_documents(self.read_evidence(), self.source, allowed, 'test-corpus')
+
 
 if __name__ == '__main__':
     unittest.main()

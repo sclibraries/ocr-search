@@ -1,4 +1,5 @@
 """Bounded metadata import and durable discovery checkpoints; never an access grant."""
+
 import hashlib
 import json
 import sqlite3
@@ -15,7 +16,9 @@ def s3_location(uri):
 class Catalog:
     def __init__(self, path):
         self.db = sqlite3.connect(path)
-        self.db.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, fingerprint TEXT, metadata TEXT, result TEXT)')
+        self.db.execute(
+            'CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, fingerprint TEXT, metadata TEXT, result TEXT)'
+        )
         self.db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
 
     def close(self):
@@ -52,8 +55,10 @@ class Catalog:
                 fingerprint = hashlib.sha256(payload.encode()).hexdigest()
                 old = self.db.execute('SELECT fingerprint FROM files WHERE id=?', (file_id,)).fetchone()
                 if not old or old[0] != fingerprint:
-                    self.db.execute('INSERT OR REPLACE INTO files VALUES (?, ?, ?, NULL)',
-                                    (file_id, fingerprint, payload))
+                    self.db.execute(
+                        'INSERT OR REPLACE INTO files VALUES (?, ?, ?, NULL)',
+                        (file_id, fingerprint, payload),
+                    )
             if self.count() > 100:
                 raise ValueError('checkpoint exceeds 100 files; use a separate output directory')
         return len(seen)
@@ -76,6 +81,8 @@ class Catalog:
         rows = []
         for payload, result in self.db.execute('SELECT metadata, result FROM files ORDER BY id'):
             row = json.loads(payload)
-            row.update(json.loads(result) if result else {'status': 'pending', 'issues': [], 'public_index_approved': False})
+            row.update(
+                json.loads(result) if result else {'status': 'pending', 'issues': [], 'public_index_approved': False}
+            )
             rows.append(row)
         return rows

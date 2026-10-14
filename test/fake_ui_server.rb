@@ -26,8 +26,12 @@ module OcrSearchFakeAPI
     matching_pages = items.sum { |item| item['matching_pages'] }
     if parameters['item']
       matching = items.first
-      groups = matching ? [matching.reject { |key, _value| key == 'all_pages' }
-                          .merge('pages' => matching['all_pages'].first(per_page))] : []
+      groups = if matching
+                 [matching.reject { |key, _value| key == 'all_pages' }
+                          .merge('pages' => matching['all_pages'].first(per_page))]
+               else
+                 []
+               end
     else
       groups = items.map do |item|
         item.reject { |key, _value| key == 'all_pages' }.merge('pages' => item['all_pages'].first(3))
@@ -45,16 +49,20 @@ module OcrSearchFakeAPI
         'year_to' => integer_or_nil(parameters['year_to']), 'collection' => parameters['collection'],
         'item' => parameters['item']
       },
-      'page' => page, 'per_page' => per_page, 'total_items' => parameters['item'] ? (groups.empty? ? 0 : 1) : items.length,
+      'page' => page, 'per_page' => per_page, 'total_items' => if parameters['item']
+                                                                 groups.empty? ? 0 : 1
+                                                               else
+                                                                 items.length
+                                                               end,
       'matching_pages' => matching_pages, 'partial' => false, 'solr_time_ms' => 1,
       'facets' => {
         'series' => [
-          {'value' => 'Example Weekly', 'count' => 2},
-          {'value' => 'Other Weekly', 'count' => 1}
+          { 'value' => 'Example Weekly', 'count' => 2 },
+          { 'value' => 'Other Weekly', 'count' => 1 }
         ],
         'decade' => [
-          {'value' => 1920, 'count' => 2},
-          {'value' => 1930, 'count' => 1}
+          { 'value' => 1920, 'count' => 2 },
+          { 'value' => 1930, 'count' => 1 }
         ]
       },
       'results' => groups
@@ -76,6 +84,7 @@ module OcrSearchFakeAPI
     if parameters['canvas']
       selected_index = pages.index { |page| page['canvas_id'] == parameters['canvas'] }
       return Response.new('404', '{}') unless selected_index
+
       pages_page = selected_index / pages_per_page + 1
     elsif parameters['page_number']
       jump_position = pages.index { |page| page['page_number'] >= parameters['page_number'].to_i }
@@ -124,8 +133,8 @@ module OcrSearchFakeAPI
       {
         'id' => "example:#{id}:#{number}", 'page_number' => number,
         'page_label' => "Page #{number}", 'canvas_id' => "https://example.org/canvas/#{id}/#{number}",
-        'snippets' => [{'html' => "A <mark>mascot</mark> appears on page #{number}.",
-                        'pages' => [], 'regions' => [], 'highlights' => []}]
+        'snippets' => [{ 'html' => "A <mark>mascot</mark> appears on page #{number}.",
+                         'pages' => [], 'regions' => [], 'highlights' => [] }]
       }
     end
     {

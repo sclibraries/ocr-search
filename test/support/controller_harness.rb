@@ -22,7 +22,7 @@ class ApplicationController
   end
 
   def initialize(values = {})
-    @params = values.each_with_object({}) { |(key, value), out| out[key.to_sym] = value }
+    @params = values.transform_keys(&:to_sym)
     @rendered_status = 200
   end
 
@@ -36,7 +36,7 @@ class ApplicationController
 
   def redirect_to(location, status: :found)
     @redirect_location = location
-    @rendered_status = {'found' => 302, :found => 302}.fetch(status, status)
+    @rendered_status = { 'found' => 302, :found => 302 }.fetch(status, status)
   end
 
   def render_view(name)
@@ -79,7 +79,7 @@ class ControllerViewContext
     %(<a href="#{CGI.escapeHTML(href.to_s)}"#{attrs}>#{CGI.escapeHTML(label.to_s)}</a>)
   end
 
-  def sanitize(value, tags: [], attributes: [])
+  def sanitize(value, tags: [], attributes: []) # rubocop:disable Lint/UnusedMethodArgument -- Rails keyword API.
     escaped = CGI.escapeHTML(value.to_s)
     tags.include?('mark') ? escaped.gsub('&lt;mark&gt;', '<mark>').gsub('&lt;/mark&gt;', '</mark>') : escaped
   end

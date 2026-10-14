@@ -1,11 +1,17 @@
 """Generate a bounded, read-only Drupal relationship query."""
 
-
 EXPORT_SCHEMA_VERSION = 1
 
 
-def sample_sql(collection_id, hocr_media_use_id, after_file_id=0, limit=100,
-               after_page_id=None, after_item_id=None, explain=False):
+def sample_sql(
+    collection_id,
+    hocr_media_use_id,
+    after_file_id=0,
+    limit=100,
+    after_page_id=None,
+    after_item_id=None,
+    explain=False,
+):
     """Return one JSON object per hOCR file/page association.
 
     Site-specific values are arguments instead of repository defaults. Canvas IDs,

@@ -198,8 +198,7 @@ def _manifest_canvases(manifest):
     if isinstance(sequences, list) and sequences:
         canvases = sequences[0].get('canvases', [])
         return [
-            {'id': canvas.get('@id') or canvas.get('id'), 'label': _label(canvas.get('label'))}
-            for canvas in canvases
+            {'id': canvas.get('@id') or canvas.get('id'), 'label': _label(canvas.get('label'))} for canvas in canvases
         ]
     return [
         {'id': canvas.get('id') or canvas.get('@id'), 'label': _label(canvas.get('label'))}
@@ -308,8 +307,7 @@ def read_access_mapping(path):
 
 def classify_access(publication_state, access_terms, access_term_ids, mapping):
     """Classify only from an explicit reviewed mapping; unknown values fail closed."""
-    return _classify_access_prepared(publication_state, access_terms, access_term_ids,
-                                     _prepare_access_mapping(mapping))
+    return _classify_access_prepared(publication_state, access_terms, access_term_ids, _prepare_access_mapping(mapping))
 
 
 def _classify_access_prepared(publication_state, access_terms, access_term_ids, prepared):
@@ -397,8 +395,13 @@ def _report(pages, sample_size, dates_unparsed=()):
     samples = []
     for page in pages:
         if page['canvas_id'] and len(samples) < sample_size:
-            samples.append({'item_id': page['item_id'], 'page_number': page['page_number'],
-                            'canvas_id': page['canvas_id']})
+            samples.append(
+                {
+                    'item_id': page['item_id'],
+                    'page_number': page['page_number'],
+                    'canvas_id': page['canvas_id'],
+                }
+            )
     return {
         'schema_version': 1,
         'input_file_count': len({page['file_id'] for page in pages}),
@@ -418,9 +421,17 @@ def _report(pages, sample_size, dates_unparsed=()):
     }
 
 
-def build_inventory(export_rows, evidence, manifest_directory, s3_client, source_bucket=None,
-                    access_mapping=None, compass_manifest_directory=None, sample_size=10,
-                    manifest_metadata_labels=None):
+def build_inventory(
+    export_rows,
+    evidence,
+    manifest_directory,
+    s3_client,
+    source_bucket=None,
+    access_mapping=None,
+    compass_manifest_directory=None,
+    sample_size=10,
+    manifest_metadata_labels=None,
+):
     """Build the page inventory and reconciliation report without writing or uploading data."""
     if not 1 <= sample_size <= 100:
         raise ValueError('canvas sample size must be 1–100')
@@ -433,13 +444,16 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
     compass_manifests = {}
     if compass_manifest_directory:
         from .manifests import read_manifest_index
+
         for entry in read_manifest_index(compass_manifest_directory):
             manifest = json.loads((Path(compass_manifest_directory) / entry['filename']).read_bytes())
             canvases = _manifest_canvases(manifest)
             if not canvases or any(not canvas['id'] for canvas in canvases):
-                raise ValueError(f"Compass manifest has missing canvas identifiers: {entry['filename']}")
+                raise ValueError(f'Compass manifest has missing canvas identifiers: {entry["filename"]}')
             compass_manifests[entry['item_id']] = {
-                'url': entry['manifest_url'], 'manifest': manifest, 'canvases': canvases,
+                'url': entry['manifest_url'],
+                'manifest': manifest,
+                'canvases': canvases,
             }
     seen_file_associations, seen_pages = set(), set()
     pages = []
@@ -543,8 +557,9 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             'item_title': item_title,
             'series': series,
             'issue_date': issue_date,
-            'aspace_record': (evidence_page.get('aspace_record') or item.get('aspace_record')
-                              or row.get('aspace_record')),
+            'aspace_record': (
+                evidence_page.get('aspace_record') or item.get('aspace_record') or row.get('aspace_record')
+            ),
             's3_bucket': bucket,
             's3_key': key,
             's3_version_id': head.get('VersionId'),
@@ -560,9 +575,12 @@ def build_inventory(export_rows, evidence, manifest_directory, s3_client, source
             'ancestry_depth_limit_reached': bool(row.get('ancestry_depth_limit_reached')),
             'publication_state': row.get('publication_state'),
             'access_terms': _strings(row.get('access_terms')),
-            'access': _classify_access_prepared(row.get('publication_state'),
-                                                row.get('access_terms'),
-                                                row.get('access_term_ids'), prepared_access),
+            'access': _classify_access_prepared(
+                row.get('publication_state'),
+                row.get('access_terms'),
+                row.get('access_term_ids'),
+                prepared_access,
+            ),
             'issues': issues,
         }
         pages.append(page)
@@ -589,12 +607,18 @@ def write_inventory(result, output_location, s3_client=None):
             raise ValueError('S3 output must be s3://bucket/key without query or fragment')
         if s3_client is None:
             raise ValueError('an S3 client is required for an s3:// output location')
-        report_key = key.rsplit('.', 1)[0] + '.reconciliation.json' if '.' in key.rsplit('/', 1)[-1] else key + '.reconciliation.json'
-        s3_client.put_object(Bucket=bucket, Key=key, Body=_jsonl(result['pages']),
-                             ContentType='application/x-ndjson')
-        s3_client.put_object(Bucket=bucket, Key=report_key,
-                             Body=(json.dumps(result['reconciliation'], indent=2, sort_keys=True) + '\n').encode(),
-                             ContentType='application/json')
+        report_key = (
+            key.rsplit('.', 1)[0] + '.reconciliation.json'
+            if '.' in key.rsplit('/', 1)[-1]
+            else key + '.reconciliation.json'
+        )
+        s3_client.put_object(Bucket=bucket, Key=key, Body=_jsonl(result['pages']), ContentType='application/x-ndjson')
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=report_key,
+            Body=(json.dumps(result['reconciliation'], indent=2, sort_keys=True) + '\n').encode(),
+            ContentType='application/json',
+        )
         return {'inventory': output, 'reconciliation': f's3://{bucket}/{report_key}'}
 
     path = Path(output)

@@ -1,5 +1,6 @@
 require 'digest'
 
+# Computes stable content versions for assets loaded by the plugin.
 module OcrSearchAssetVersions
   ASSET_NAMES = %w[ocr_search.css ocr_highlights.css ocr_highlights.js].freeze
 
